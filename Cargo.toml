@@ -1,0 +1,15 @@
+[package]
+name = "web1"
+version = "0.1.0"
+authors = ["Jilles Tjoelker <jilles@stack.nl>"]
+edition = "2018"
+
+[dependencies]
+actix-web = "0.7.18"
+
+[dependencies.askama]
+version = "0.7.2"
+features = ["with-actix-web"]
+
+[build-dependencies.askama]
+version = "0.7.2"

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Test actix-web + askama</title>
+</head>
+
+<body>
+<h1>Test actix-web + askama</h1>
+<table border="1">
+<tr><th>Black<th>White<th>Result
+{% for game in games %}
+<tr><td>{{game.white.name}}<td>{{game.black.name}}<td>{{game.result}}
+{% endfor %}
+</body>
+</html>
