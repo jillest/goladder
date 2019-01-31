@@ -1,7 +1,11 @@
+#[macro_use]
+extern crate postgres_derive;
+
 use std::sync::Arc;
 
 use actix_web::{http, server, App, Path, Responder, State};
 use askama::Template;
+use postgres::{self, to_sql_checked};
 
 mod db;
 
@@ -18,9 +22,9 @@ struct Player {
     name: String,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]
+#[postgres(name = "gameresult")]
 enum GameResult {
-    Unknown,
     WhiteWins,
     BlackWins,
     WhiteWinsByDefault,
@@ -28,15 +32,18 @@ enum GameResult {
     BothLose,
 }
 
-impl std::fmt::Display for GameResult {
+#[derive(Debug)]
+struct FormattableGameResult(Option<GameResult>);
+
+impl std::fmt::Display for FormattableGameResult {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let s = match self {
-            GameResult::Unknown => "?-?",
-            GameResult::WhiteWins => "1-0",
-            GameResult::BlackWins => "0-1",
-            GameResult::WhiteWinsByDefault => "1-0!",
-            GameResult::BlackWinsByDefault => "0-1!",
-            GameResult::BothLose => "0-0",
+        let s = match self.0 {
+            None => "?-?",
+            Some(GameResult::WhiteWins) => "1-0",
+            Some(GameResult::BlackWins) => "0-1",
+            Some(GameResult::WhiteWinsByDefault) => "1-0!",
+            Some(GameResult::BlackWinsByDefault) => "0-1!",
+            Some(GameResult::BothLose) => "0-0",
         };
         write!(formatter, "{}", s)
     }
@@ -46,7 +53,7 @@ impl std::fmt::Display for GameResult {
 struct Game {
     white: Player,
     black: Player,
-    result: GameResult,
+    result: FormattableGameResult,
 }
 
 #[derive(Template)]
@@ -61,10 +68,11 @@ fn index(state: State<AppState>) -> impl Responder {
     let games: Vec<Game> = rows.iter().map(|row| {
         let white: String = row.get(0);
         let black: String = row.get(1);
+        let result: Option<GameResult> = row.get(2);
         Game {
             white: Player { id: PlayerId(0), name: white },
             black: Player { id: PlayerId(0), name: black },
-            result: GameResult::Unknown,
+            result: FormattableGameResult(result),
         }
     }).collect();
     IndexTemplate { games }
