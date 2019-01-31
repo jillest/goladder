@@ -64,7 +64,7 @@ struct IndexTemplate {
 
 fn index(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn.query("SELECT pw.name, pb.name, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black;", &[]).unwrap();
+    let rows = conn.query("SELECT pw.name, pb.name, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black ORDER BY g.id;", &[]).unwrap();
     let games: Vec<Game> = rows.iter().map(|row| {
         let white: String = row.get(0);
         let black: String = row.get(1);
