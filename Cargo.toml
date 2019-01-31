@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 actix-web = "0.7.18"
+r2d2 = "0.8"
+r2d2_postgres = "0.14.0"
 
 [dependencies.askama]
 version = "0.7.2"

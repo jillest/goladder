@@ -1,7 +1,13 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 
-use actix_web::{http, server, App, Path, Responder};
+use actix_web::{http, server, App, Path, Responder, State};
 use askama::Template;
+
+mod db;
+
+struct AppState {
+    dbpool: Arc<db::Pool>,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct PlayerId(u32);
@@ -49,21 +55,25 @@ struct IndexTemplate {
     games: Vec<Game>,
 }
 
-fn index(info: Path<()>) -> impl Responder {
-    let p1 = Player { id: PlayerId(1), name: "p1".into() };
-    let p2 = Player { id: PlayerId(2), name: "p2".into() };
-    let p3 = Player { id: PlayerId(3), name: "p3".into() };
-    let p4 = Player { id: PlayerId(4), name: "p4".into() };
-    let games = vec![
-        Game { white: p1, black: p2, result: GameResult::Unknown },
-        Game { white: p3, black: p4, result: GameResult::Unknown },
-    ];
+fn index(state: State<AppState>) -> impl Responder {
+    let conn = state.dbpool.get().unwrap();
+    let rows = conn.query("SELECT pw.name, pb.name, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black;", &[]).unwrap();
+    let games: Vec<Game> = rows.iter().map(|row| {
+        let white: String = row.get(0);
+        let black: String = row.get(1);
+        Game {
+            white: Player { id: PlayerId(0), name: white },
+            black: Player { id: PlayerId(0), name: black },
+            result: GameResult::Unknown,
+        }
+    }).collect();
     IndexTemplate { games }
 }
 
 fn main() {
+    let dbpool = Arc::new(db::create_pool());
     server::new(
-        || App::new()
+        move || App::with_state(AppState { dbpool: dbpool.clone() })
             .route("/index.html", http::Method::GET, index))
         .bind("127.0.0.1:8080").unwrap()
         .run();
