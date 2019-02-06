@@ -11,6 +11,7 @@ CREATE TABLE players (
 CREATE TYPE gameresult AS ENUM (
 	'WhiteWins',
 	'BlackWins',
+	'Jigo',
 	'WhiteWinsByDefault',
 	'BlackWinsByDefault',
 	'BothLose'

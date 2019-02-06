@@ -27,6 +27,7 @@ struct Player {
 enum GameResult {
     WhiteWins,
     BlackWins,
+    Jigo,
     WhiteWinsByDefault,
     BlackWinsByDefault,
     BothLose,
@@ -41,6 +42,7 @@ impl std::fmt::Display for FormattableGameResult {
             None => "?-?",
             Some(GameResult::WhiteWins) => "1-0",
             Some(GameResult::BlackWins) => "0-1",
+            Some(GameResult::Jigo) => "½-½",
             Some(GameResult::WhiteWinsByDefault) => "1-0!",
             Some(GameResult::BlackWinsByDefault) => "0-1!",
             Some(GameResult::BothLose) => "0-0",
