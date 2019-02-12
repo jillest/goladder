@@ -1,5 +1,5 @@
 [package]
-name = "web1"
+name = "goladder"
 version = "0.1.0"
 authors = ["Jilles Tjoelker <jilles@stack.nl>"]
 edition = "2018"

@@ -573,6 +573,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "goladder"
+version = "0.1.0"
+dependencies = [
+ "actix-web 0.7.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "askama 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "postgres 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "postgres-derive 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "r2d2 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "r2d2_postgres 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "h2"
 version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1836,18 +1848,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "web1"
-version = "0.1.0"
-dependencies = [
- "actix-web 0.7.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "askama 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "postgres 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "postgres-derive 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "r2d2 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "r2d2_postgres 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "widestring"
