@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Scheduling round {{round.id}} on {{round.date}}</title>
+</head>
+
+<body>
+<h1>Scheduling round {{round.id}} on {{round.date}}</h1>
+<form action="/schedule/{{round.id}}/run" method="POST">
+<table border="1">
+<tr><th>Player<th>Schedule
+{% for presence in presences %}
+<tr><td>{{presence.name}}<td><input type="checkbox" name="p{{presence.player_id}}">
+{% endfor %}
+</table>
+<input type="submit" value="Pair">
+</form>
+</body>
+</html>
+
