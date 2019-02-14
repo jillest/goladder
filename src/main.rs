@@ -69,16 +69,25 @@ struct IndexTemplate {
 fn index(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
     let rows = conn.query("SELECT pw.name, pb.name, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black ORDER BY g.id;", &[]).unwrap();
-    let games: Vec<Game> = rows.iter().map(|row| {
-        let white: String = row.get(0);
-        let black: String = row.get(1);
-        let result: Option<GameResult> = row.get(2);
-        Game {
-            white: Player { id: PlayerId(0), name: white },
-            black: Player { id: PlayerId(0), name: black },
-            result: FormattableGameResult(result),
-        }
-    }).collect();
+    let games: Vec<Game> = rows
+        .iter()
+        .map(|row| {
+            let white: String = row.get(0);
+            let black: String = row.get(1);
+            let result: Option<GameResult> = row.get(2);
+            Game {
+                white: Player {
+                    id: PlayerId(0),
+                    name: white,
+                },
+                black: Player {
+                    id: PlayerId(0),
+                    name: black,
+                },
+                result: FormattableGameResult(result),
+            }
+        })
+        .collect();
     IndexTemplate { games }
 }
 
@@ -105,34 +114,53 @@ struct ScheduleRoundTemplate {
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
     let round_id = params.0;
     let conn = state.dbpool.get().unwrap();
-    let rows = conn.query("SELECT date::TEXT FROM rounds WHERE id=$1;", &[&round_id]).unwrap();
-    let round_date = rows.iter().next().map_or_else(|| "??".to_owned(), |row| {
-        let date: String = row.get(0);
-        date
-    });
-    let round = Round { id: round_id, date: round_date };
+    let rows = conn
+        .query("SELECT date::TEXT FROM rounds WHERE id=$1;", &[&round_id])
+        .unwrap();
+    let round_date = rows.iter().next().map_or_else(
+        || "??".to_owned(),
+        |row| {
+            let date: String = row.get(0);
+            date
+        },
+    );
+    let round = Round {
+        id: round_id,
+        date: round_date,
+    };
     let rows = conn.query("SELECT pl.id, pl.name, pr.schedule FROM players pl, presence pr WHERE pl.id = pr.player AND \"when\"=$1;",
         &[&round_id]).unwrap();
-    let presences: Vec<Presence> = rows.iter().map(|row| {
-        let player_id: i32 = row.get(0);
-        let name: String = row.get(1);
-        let schedule: bool = row.get(2);
-        Presence {
-            player_id,
-            name,
-            schedule
-        }
-    }).collect();
+    let presences: Vec<Presence> = rows
+        .iter()
+        .map(|row| {
+            let player_id: i32 = row.get(0);
+            let name: String = row.get(1);
+            let schedule: bool = row.get(2);
+            Presence {
+                player_id,
+                name,
+                schedule,
+            }
+        })
+        .collect();
     ScheduleRoundTemplate { round, presences }
 }
 
-fn schedule_round_run((pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>)) -> actix_web::Result<HttpResponse> {
+fn schedule_round_run(
+    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+) -> actix_web::Result<HttpResponse> {
     let round_id = pathparams.0;
-    let mut player_ids: Vec<i32> = params.0.keys().filter_map(|s| if s.starts_with("p") {
-        i32::from_str(&s[1..]).ok()
-    } else {
-        None
-    }).collect();
+    let mut player_ids: Vec<i32> = params
+        .0
+        .keys()
+        .filter_map(|s| {
+            if s.starts_with("p") {
+                i32::from_str(&s[1..]).ok()
+            } else {
+                None
+            }
+        })
+        .collect();
     player_ids.sort_unstable();
     let player_ids = player_ids;
     let conn = state.dbpool.get().unwrap();
@@ -160,8 +188,12 @@ fn schedule_round_run((pathparams, state, params): (Path<(i32,)>, State<AppState
             }
         }
     }
-    let rows = conn.query("SELECT currentrating FROM players WHERE id = ANY ($1) ORDER BY id;",
-        &[&player_ids]).unwrap();
+    let rows = conn
+        .query(
+            "SELECT currentrating FROM players WHERE id = ANY ($1) ORDER BY id;",
+            &[&player_ids],
+        )
+        .unwrap();
     let ratings: Vec<f64> = rows.iter().map(|row| row.get(0)).collect();
     assert_eq!(ratings.len(), player_ids.len());
     const DONT_MATCH_AGAIN_PARAM: f64 = 1000.0;
@@ -173,7 +205,8 @@ fn schedule_round_run((pathparams, state, params): (Path<(i32,)>, State<AppState
                 continue;
             }
             if *w > 0 {
-                *w = (-DONT_MATCH_AGAIN_PARAM * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp()) as i32;
+                *w = (-DONT_MATCH_AGAIN_PARAM * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp())
+                    as i32;
             }
             let diff = (ratings[i] - ratings[j]) / RATING_POINTS_PER_CLASS;
             *w -= (diff * diff) as i32;
@@ -187,11 +220,19 @@ fn schedule_round_run((pathparams, state, params): (Path<(i32,)>, State<AppState
 
 fn main() {
     let dbpool = Arc::new(db::create_pool());
-    server::new(
-        move || App::with_state(AppState { dbpool: dbpool.clone() })
-            .route("/", http::Method::GET, index)
-            .resource("/schedule/{round}", |r| r.method(http::Method::GET).with(schedule_round))
-            .resource("/schedule/{round}/run", |r| r.method(http::Method::POST).with(schedule_round_run)))
-        .bind("127.0.0.1:8080").unwrap()
-        .run();
+    server::new(move || {
+        App::with_state(AppState {
+            dbpool: dbpool.clone(),
+        })
+        .route("/", http::Method::GET, index)
+        .resource("/schedule/{round}", |r| {
+            r.method(http::Method::GET).with(schedule_round)
+        })
+        .resource("/schedule/{round}/run", |r| {
+            r.method(http::Method::POST).with(schedule_round_run)
+        })
+    })
+    .bind("127.0.0.1:8080")
+    .unwrap()
+    .run();
 }
