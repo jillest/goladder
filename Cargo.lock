@@ -582,6 +582,7 @@ dependencies = [
  "postgres-derive 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "r2d2 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "r2d2_postgres 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "weightedmatch 0.1.0",
 ]
 
 [[package]]
@@ -1848,6 +1849,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "weightedmatch"
+version = "0.1.0"
 
 [[package]]
 name = "widestring"

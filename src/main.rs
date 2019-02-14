@@ -205,14 +205,25 @@ fn schedule_round_run(
                 continue;
             }
             if *w > 0 {
-                *w = (-DONT_MATCH_AGAIN_PARAM * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp())
+                *w = (DONT_MATCH_AGAIN_PARAM * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp())
                     as i32;
             }
             let diff = (ratings[i] - ratings[j]) / RATING_POINTS_PER_CLASS;
-            *w -= (diff * diff) as i32;
+            *w += (diff * diff) as i32;
         }
     }
     eprintln!("weights = {:?}", weights);
+    let matching = weightedmatch::weightedmatch(weights, weightedmatch::MINIMIZE);
+    eprintln!("matching = {:?}", matching);
+    for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
+        if (ratings[player], player) < (ratings[opponent], opponent) {
+            continue;
+        }
+        eprintln!(
+            "schedule: {}({}) vs {}({})",
+            player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
+        );
+    }
     Ok(HttpResponse::build(http::StatusCode::OK)
         .content_type("text/plain")
         .body("Scheduled OK"))

@@ -1,0 +1,5 @@
+[package]
+name = "weightedmatch"
+version = "0.1.0"
+authors = ["Jilles Tjoelker <jilles@stack.nl>"]
+edition = "2018"
