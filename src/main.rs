@@ -215,6 +215,10 @@ fn schedule_round_run(
     eprintln!("weights = {:?}", weights);
     let matching = weightedmatch::weightedmatch(weights, weightedmatch::MINIMIZE);
     eprintln!("matching = {:?}", matching);
+    let trans = conn.transaction().unwrap();
+    let statement = conn
+        .prepare("INSERT INTO games (played, white, black) VALUES ($1, $2, $3);")
+        .unwrap();
     for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
         if (ratings[player], player) < (ratings[opponent], opponent) {
             continue;
@@ -223,7 +227,11 @@ fn schedule_round_run(
             "schedule: {}({}) vs {}({})",
             player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
         );
+        statement
+            .execute(&[&round_id, &player_ids[player], &player_ids[opponent]])
+            .unwrap();
     }
+    trans.commit().unwrap();
     Ok(HttpResponse::build(http::StatusCode::OK)
         .content_type("text/plain")
         .body("Scheduled OK"))
