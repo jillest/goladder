@@ -8,56 +8,14 @@ use std::sync::Arc;
 
 use actix_web::{http, server, App, Form, HttpResponse, Path, Responder, State};
 use askama::Template;
-use postgres::{self, to_sql_checked};
 
 mod db;
+mod models;
+
+use crate::models::{FormattableGameResult, Game, GameResult, Player, Presence, Round};
 
 struct AppState {
     dbpool: Arc<db::Pool>,
-}
-
-#[derive(Debug)]
-struct Player {
-    id: i32,
-    name: String,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]
-#[postgres(name = "gameresult")]
-enum GameResult {
-    WhiteWins,
-    BlackWins,
-    Jigo,
-    WhiteWinsByDefault,
-    BlackWinsByDefault,
-    BothLose,
-}
-
-#[derive(Debug)]
-struct FormattableGameResult(Option<GameResult>);
-
-impl std::fmt::Display for FormattableGameResult {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let s = match self.0 {
-            None => "?-?",
-            Some(GameResult::WhiteWins) => "1-0",
-            Some(GameResult::BlackWins) => "0-1",
-            Some(GameResult::Jigo) => "½-½",
-            Some(GameResult::WhiteWinsByDefault) => "1-0!",
-            Some(GameResult::BlackWinsByDefault) => "0-1!",
-            Some(GameResult::BothLose) => "0-0",
-        };
-        write!(formatter, "{}", s)
-    }
-}
-
-#[derive(Debug)]
-struct Game {
-    id: i32,
-    white: Player,
-    black: Player,
-    handicap: f64,
-    result: FormattableGameResult,
 }
 
 #[derive(Template)]
@@ -95,19 +53,6 @@ fn index(state: State<AppState>) -> impl Responder {
         })
         .collect();
     IndexTemplate { games }
-}
-
-#[derive(Debug)]
-struct Round {
-    id: i32,
-    date: String,
-}
-
-#[derive(Debug)]
-struct Presence {
-    player_id: i32,
-    name: String,
-    schedule: bool,
 }
 
 #[derive(Template)]
@@ -324,15 +269,16 @@ struct AddRoundTemplate {
 fn add_round(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
     let rows = conn
-        .query("SELECT (COALESCE(MAX(date) + '1 week'::interval, NOW()))::date::TEXT FROM rounds;", &[])
+        .query(
+            "SELECT (COALESCE(MAX(date) + '1 week'::interval, NOW()))::date::TEXT FROM rounds;",
+            &[],
+        )
         .unwrap();
     let defaultdate: String = {
         let row = rows.iter().next().unwrap();
         row.get(0)
     };
-    AddRoundTemplate {
-        defaultdate,
-    }
+    AddRoundTemplate { defaultdate }
 }
 
 fn add_round_run(
@@ -340,7 +286,11 @@ fn add_round_run(
 ) -> actix_web::Result<HttpResponse> {
     let date = &params.0["date"];
     let conn = state.dbpool.get().unwrap();
-    conn.execute("INSERT INTO rounds (date) VALUES ($1::TEXT::date);", &[&date]).unwrap();
+    conn.execute(
+        "INSERT INTO rounds (date) VALUES ($1::TEXT::date);",
+        &[&date],
+    )
+    .unwrap();
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/")
         .finish())
