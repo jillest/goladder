@@ -310,9 +310,40 @@ fn schedule_round_run(
     let conn = state.dbpool.get().unwrap();
     unpair_games(&conn, round_id, &unpair_game_ids).unwrap();
     pair_players(&conn, round_id, &player_ids).unwrap();
-    Ok(HttpResponse::build(http::StatusCode::OK)
-        .content_type("text/plain")
-        .body("Scheduled OK"))
+    Ok(HttpResponse::Found()
+        .header(http::header::LOCATION, format!("/schedule/{}", round_id))
+        .finish())
+}
+
+#[derive(Template)]
+#[template(path = "add_round.html")]
+struct AddRoundTemplate {
+    defaultdate: String,
+}
+
+fn add_round(state: State<AppState>) -> impl Responder {
+    let conn = state.dbpool.get().unwrap();
+    let rows = conn
+        .query("SELECT (COALESCE(MAX(date) + '1 week'::interval, NOW()))::date::TEXT FROM rounds;", &[])
+        .unwrap();
+    let defaultdate: String = {
+        let row = rows.iter().next().unwrap();
+        row.get(0)
+    };
+    AddRoundTemplate {
+        defaultdate,
+    }
+}
+
+fn add_round_run(
+    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+) -> actix_web::Result<HttpResponse> {
+    let date = &params.0["date"];
+    let conn = state.dbpool.get().unwrap();
+    conn.execute("INSERT INTO rounds (date) VALUES ($1::TEXT::date);", &[&date]).unwrap();
+    Ok(HttpResponse::Found()
+        .header(http::header::LOCATION, "/")
+        .finish())
 }
 
 fn main() {
@@ -323,10 +354,12 @@ fn main() {
         })
         .route("/", http::Method::GET, index)
         .resource("/schedule/{round}", |r| {
-            r.method(http::Method::GET).with(schedule_round)
-        })
-        .resource("/schedule/{round}/run", |r| {
+            r.method(http::Method::GET).with(schedule_round);
             r.method(http::Method::POST).with(schedule_round_run)
+        })
+        .resource("/add_round", |r| {
+            r.method(http::Method::GET).with(add_round);
+            r.method(http::Method::POST).with(add_round_run)
         })
     })
     .bind("127.0.0.1:8080")

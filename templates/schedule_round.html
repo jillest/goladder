@@ -30,7 +30,7 @@ window.addEventListener('load', function() {
 
 <body>
 <h1>Scheduling round {{round.id}} on {{round.date}}</h1>
-<form id="pairform" action="/schedule/{{round.id}}/run" method="POST">
+<form id="pairform" action="/schedule/{{round.id}}" method="POST">
 <h2>Scheduled games</h2>
 {% if games.len() != 0 %}
 <table border="1">
