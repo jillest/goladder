@@ -301,6 +301,32 @@ fn add_round_run(
         .finish())
 }
 
+#[derive(Template)]
+#[template(path = "players.html")]
+struct PlayersTemplate {
+    players: Vec<Player>,
+}
+
+fn players(state: State<AppState>) -> impl Responder {
+    let conn = state.dbpool.get().unwrap();
+    let rows = conn
+        .query(
+            "SELECT id, name, currentrating FROM players ORDER BY currentrating DESC",
+            &[],
+        )
+        .unwrap();
+    let players: Vec<Player> = rows
+        .iter()
+        .map(|row| {
+            let id: i32 = row.get(0);
+            let name: String = row.get(1);
+            let rating: f64 = row.get(2);
+            Player { id, name, rating }
+        })
+        .collect();
+    PlayersTemplate { players }
+}
+
 fn main() {
     let dbpool = Arc::new(db::create_pool());
     server::new(move || {
@@ -316,6 +342,7 @@ fn main() {
             r.method(http::Method::GET).with(add_round);
             r.method(http::Method::POST).with(add_round_run)
         })
+        .route("/players", http::Method::GET, players)
     })
     .bind("127.0.0.1:8080")
     .unwrap()
