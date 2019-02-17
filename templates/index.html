@@ -2,15 +2,17 @@
 <html>
 <meta charset="utf-8">
 <head>
-<title>Test actix-web + askama + postgresql</title>
+<title>Go ladder</title>
 </head>
 
 <body>
-<h1>Test actix-web + askama + postgresql</h1>
+<h1>Go ladder</h1>
 <table border="1">
-<tr><th>Black<th>White<th>Handicap<th>Result
-{% for game in games %}
-<tr><td>{{game.white.name}}<td>{{game.black.name}}<td>{{game.handicap}}<td>{{game.result}}
+<tr><th>Round on
+{% for round in rounds %}
+<tr><td><a href="/schedule/{{round.id}}">{{round.date}}</a>
 {% endfor %}
+<tr><td><a href="/add_round">New</a>
+</table>
 </body>
 </html>

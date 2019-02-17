@@ -21,38 +21,23 @@ struct AppState {
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    games: Vec<Game>,
+    rounds: Vec<Round>,
 }
 
 fn index(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn.query("SELECT g.id, pw.id, pw.name, pb.id, pb.name, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black ORDER BY g.id;", &[]).unwrap();
-    let games: Vec<Game> = rows
+    let rows = conn
+        .query("SELECT id, date::TEXT FROM rounds ORDER BY date", &[])
+        .unwrap();
+    let rounds: Vec<Round> = rows
         .iter()
         .map(|row| {
             let id: i32 = row.get(0);
-            let white_id: i32 = row.get(1);
-            let white: String = row.get(2);
-            let black_id: i32 = row.get(3);
-            let black: String = row.get(4);
-            let handicap: f64 = row.get(5);
-            let result: Option<GameResult> = row.get(6);
-            Game {
-                id,
-                white: Player {
-                    id: white_id,
-                    name: white,
-                },
-                black: Player {
-                    id: black_id,
-                    name: black,
-                },
-                handicap,
-                result: FormattableGameResult(result),
-            }
+            let date: String = row.get(1);
+            Round { id, date }
         })
         .collect();
-    IndexTemplate { games }
+    IndexTemplate { rounds }
 }
 
 #[derive(Template)]
