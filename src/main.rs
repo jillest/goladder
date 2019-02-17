@@ -128,7 +128,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
         id: round_id,
         date: round_date,
     };
-    let rows = conn.query("SELECT pl.id, pl.name, pr.schedule FROM players pl, presence pr WHERE pl.id = pr.player AND \"when\"=$1;",
+    let rows = conn.query("SELECT pl.id, pl.name, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = $1;",
         &[&round_id]).unwrap();
     let presences: Vec<Presence> = rows
         .iter()
