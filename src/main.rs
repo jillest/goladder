@@ -215,7 +215,7 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
     if player_ids.len() == 0 {
         return Ok(());
     }
-    let rows = conn.query("SELECT white, black FROM games WHERE (white = ANY ($1) OR black = ANY ($1)) AND result IS NOT NULL ORDER BY played DESC;",
+    let rows = conn.query("SELECT g.white, g.black FROM games g, rounds r WHERE g.played = r.id AND (g.white = ANY ($1) OR g.black = ANY ($1)) AND g.result IS NOT NULL ORDER BY r.date DESC, r.id DESC;",
         &[&player_ids])?;
     let mut played = vec![0; player_ids.len()];
     let mut weights = vec![vec![0; player_ids.len()]; player_ids.len()];
