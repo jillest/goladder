@@ -5,7 +5,7 @@
 CREATE TABLE players (
 	id SERIAL PRIMARY KEY,
 	name TEXT UNIQUE NOT NULL,
-	defaultschedule BOOLEAN NOT NULL DEFAULT FALSE,
+	defaultschedule BOOLEAN DEFAULT FALSE NOT NULL,
 	initialrating DOUBLE PRECISION NOT NULL,
 	currentrating DOUBLE PRECISION NOT NULL,
 	extra JSONB
@@ -18,6 +18,7 @@ CREATE TABLE rounds (
 CREATE TABLE presence (
 	player INTEGER REFERENCES players (id) NOT NULL,
 	"when" INTEGER REFERENCES rounds (id) NOT NULL,
+	UNIQUE (player, "when"),
 	schedule BOOLEAN NOT NULL
 );
 CREATE TYPE gameresult AS ENUM (
@@ -34,6 +35,7 @@ CREATE TABLE games (
 	white INTEGER REFERENCES players (id) NOT NULL,
 	black INTEGER REFERENCES players (id) NOT NULL,
 	result gameresult, -- nullable
+	handicap DOUBLE PRECISION DEFAULT 0.0 NOT NULL,
 	boardsize SMALLINT DEFAULT 19 NOT NULL,
 	extra JSONB
 );

@@ -8,9 +8,9 @@
 <body>
 <h1>Test actix-web + askama + postgresql</h1>
 <table border="1">
-<tr><th>Black<th>White<th>Result
+<tr><th>Black<th>White<th>Handicap<th>Result
 {% for game in games %}
-<tr><td>{{game.white.name}}<td>{{game.black.name}}<td>{{game.result}}
+<tr><td>{{game.white.name}}<td>{{game.black.name}}<td>{{game.handicap}}<td>{{game.result}}
 {% endfor %}
 </body>
 </html>

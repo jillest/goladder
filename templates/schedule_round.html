@@ -6,7 +6,7 @@
 <script>
 'use strict';
 function setAllCheckboxes(form, state) {
-	var elems = form.querySelectorAll('input[type="checkbox"]');
+	var elems = form.querySelectorAll('input[type="checkbox"].pairplayer');
 	for (var i = 0; i < elems.length; i++)
 		elems[i].checked = state;
 	verifyEven(form);
@@ -14,12 +14,12 @@ function setAllCheckboxes(form, state) {
 
 function verifyEven(form) {
 	var n = 0;
-	var elems = form.querySelectorAll('input[type="checkbox"]');
+	var elems = form.querySelectorAll('input[type="checkbox"].pairplayer');
 	for (var i = 0; i < elems.length; i++)
 		if (elems[i].checked)
 			n++;
 	var submit = form.querySelector('input[type="submit"]');
-	submit.disabled = n == 0 || (n & 1) != 0;
+	submit.disabled = (n & 1) != 0;
 }
 
 window.addEventListener('load', function() {
@@ -31,20 +31,37 @@ window.addEventListener('load', function() {
 <body>
 <h1>Scheduling round {{round.id}} on {{round.date}}</h1>
 <form id="pairform" action="/schedule/{{round.id}}/run" method="POST">
+<h2>Scheduled games</h2>
+{% if games.len() != 0 %}
+<table border="1">
+<tr><th>Black<th>White<th>Handicap<th>Result<th>Unpair
+{% for game in games %}
+<tr><td>{{game.white.name}}<td>{{game.black.name}}<td>{{game.handicap}}<td>{{game.result}}
+<td><input type="checkbox" name="unpair{{game.id}}">
+{% endfor %}
+</table>
+{% else %}
+<p>No games.</p>
+{% endif %}
+<h2>Pair players</h2>
+{% if presences.len() != 0 %}
 <table border="1">
 <tr><th>Player<th>Pair
 {% for presence in presences %}
-{% if presence.schedule %}
 <tr>
 <td><label for="p{{presence.player_id}}">{{presence.name}}</label>
-<td><input type="checkbox" name="p{{presence.player_id}}" id="p{{presence.player_id}}" checked onclick="verifyEven(this.form)">
-{% endif %}
+<td><input type="checkbox" name="p{{presence.player_id}}" id="p{{presence.player_id}}" class="pairplayer" onclick="verifyEven(this.form)">
 {% endfor %}
 </table>
 <input type="button" value="Select all" onclick="setAllCheckboxes(this.form, true)">
 <input type="button" value="Deselect all" onclick="setAllCheckboxes(this.form, false)">
 <br>
-<input type="submit" value="Pair">
+{% else %}
+<p>Nobody to pair.</p>
+{% endif %}
+{% if games.len() != 0 || presences.len() != 0 %}
+<input type="submit" value="Apply changes">
+{% endif %}
 </form>
 </body>
 </html>
