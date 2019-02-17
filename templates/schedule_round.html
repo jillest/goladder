@@ -11,7 +11,9 @@
 <table border="1">
 <tr><th>Player<th>Schedule
 {% for presence in presences %}
-<tr><td>{{presence.name}}<td><input type="checkbox" name="p{{presence.player_id}}">
+{% if presence.schedule %}
+<tr><td><label for="p{{presence.player_id}}">{{presence.name}}</label><td><input type="checkbox" name="p{{presence.player_id}}" id="p{{presence.player_id}}" checked>
+{% endif %}
 {% endfor %}
 </table>
 <input type="submit" value="Pair">
