@@ -195,11 +195,18 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
     }
 }
 
-fn unpair_games(conn: &db::Connection, round_id: i32, unpair_game_ids: &[i32]) -> postgres::Result<()> {
+fn unpair_games(
+    conn: &db::Connection,
+    round_id: i32,
+    unpair_game_ids: &[i32],
+) -> postgres::Result<()> {
     if unpair_game_ids.len() == 0 {
         return Ok(());
     }
-    let n = conn.execute("DELETE FROM games WHERE played = $1 AND id = ANY ($2);", &[&round_id, &unpair_game_ids])?;
+    let n = conn.execute(
+        "DELETE FROM games WHERE played = $1 AND id = ANY ($2);",
+        &[&round_id, &unpair_game_ids],
+    )?;
     eprintln!("deleted {} game(s)", n);
     Ok(())
 }
@@ -209,7 +216,7 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
         return Ok(());
     }
     let rows = conn.query("SELECT white, black FROM games WHERE (white = ANY ($1) OR black = ANY ($1)) AND result IS NOT NULL ORDER BY played DESC;",
-        &[&player_ids]).unwrap();
+        &[&player_ids])?;
     let mut played = vec![0; player_ids.len()];
     let mut weights = vec![vec![0; player_ids.len()]; player_ids.len()];
     for row in &rows {
@@ -232,12 +239,10 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
             }
         }
     }
-    let rows = conn
-        .query(
-            "SELECT currentrating FROM players WHERE id = ANY ($1) ORDER BY id;",
-            &[&player_ids],
-        )
-        .unwrap();
+    let rows = conn.query(
+        "SELECT currentrating FROM players WHERE id = ANY ($1) ORDER BY id;",
+        &[&player_ids],
+    )?;
     let ratings: Vec<f64> = rows.iter().map(|row| row.get(0)).collect();
     assert_eq!(ratings.len(), player_ids.len());
     const DONT_MATCH_AGAIN_PARAM: f64 = 1000.0;
@@ -259,10 +264,9 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
     eprintln!("weights = {:?}", weights);
     let matching = weightedmatch::weightedmatch(weights, weightedmatch::MINIMIZE);
     eprintln!("matching = {:?}", matching);
-    let trans = conn.transaction().unwrap();
-    let statement = conn
-        .prepare("INSERT INTO games (played, white, black) VALUES ($1, $2, $3);")
-        .unwrap();
+    let trans = conn.transaction()?;
+    let statement =
+        conn.prepare("INSERT INTO games (played, white, black) VALUES ($1, $2, $3);")?;
     for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
         if (ratings[player], player) < (ratings[opponent], opponent) {
             continue;
@@ -271,12 +275,9 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
             "schedule: {}({}) vs {}({})",
             player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
         );
-        statement
-            .execute(&[&round_id, &player_ids[player], &player_ids[opponent]])
-            .unwrap();
+        statement.execute(&[&round_id, &player_ids[player], &player_ids[opponent]])?;
     }
-    trans.commit().unwrap();
-    Ok(())
+    trans.commit()
 }
 
 fn schedule_round_run(
