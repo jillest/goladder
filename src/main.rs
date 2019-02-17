@@ -12,7 +12,7 @@ use askama::Template;
 mod db;
 mod models;
 
-use crate::models::{FormattableGameResult, Game, GameResult, Player, Presence, Round};
+use crate::models::{FormattableGameResult, Game, GameResult, Player, Round, RoundPresence};
 
 struct AppState {
     dbpool: Arc<db::Pool>,
@@ -45,7 +45,7 @@ fn index(state: State<AppState>) -> impl Responder {
 struct ScheduleRoundTemplate {
     round: Round,
     games: Vec<Game>,
-    presences: Vec<Presence>,
+    presences: Vec<RoundPresence>,
 }
 
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
@@ -65,26 +65,30 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
         id: round_id,
         date: round_date,
     };
-    let rows = conn.query("SELECT g.id, pw.id, pw.name, pb.id, pb.name, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = $1 ORDER BY g.id;", &[&round_id]).unwrap();
+    let rows = conn.query("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = $1 ORDER BY g.id;", &[&round_id]).unwrap();
     let games: Vec<Game> = rows
         .iter()
         .map(|row| {
             let id: i32 = row.get(0);
             let white_id: i32 = row.get(1);
             let white: String = row.get(2);
-            let black_id: i32 = row.get(3);
-            let black: String = row.get(4);
-            let handicap: f64 = row.get(5);
-            let result: Option<GameResult> = row.get(6);
+            let white_rating: f64 = row.get(3);
+            let black_id: i32 = row.get(4);
+            let black: String = row.get(5);
+            let black_rating: f64 = row.get(6);
+            let handicap: f64 = row.get(7);
+            let result: Option<GameResult> = row.get(8);
             Game {
                 id,
                 white: Player {
                     id: white_id,
                     name: white,
+                    rating: white_rating,
                 },
                 black: Player {
                     id: black_id,
                     name: black,
+                    rating: black_rating,
                 },
                 handicap,
                 result: FormattableGameResult(result),
@@ -99,20 +103,24 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
         }
         pairedplayers
     };
-    let rows = conn.query("SELECT pl.id, pl.name, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = $1;",
+    let rows = conn.query("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = $1;",
         &[&round_id]).unwrap();
-    let presences: Vec<Presence> = rows
+    let presences: Vec<RoundPresence> = rows
         .iter()
         .filter_map(|row| {
             let player_id: i32 = row.get(0);
             let name: String = row.get(1);
-            let schedule: bool = row.get(2);
+            let rating: f64 = row.get(2);
+            let schedule: bool = row.get(3);
             if !schedule || pairedplayers.contains(&player_id) {
                 None
             } else {
-                Some(Presence {
-                    player_id,
-                    name,
+                Some(RoundPresence {
+                    player: Player {
+                        id: player_id,
+                        name,
+                        rating,
+                    },
                     schedule,
                 })
             }

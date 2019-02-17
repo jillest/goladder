@@ -4,6 +4,7 @@ use postgres::to_sql_checked;
 pub struct Player {
     pub id: i32,
     pub name: String,
+    pub rating: f64,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]
@@ -51,8 +52,7 @@ pub struct Round {
 }
 
 #[derive(Debug)]
-pub struct Presence {
-    pub player_id: i32,
-    pub name: String,
+pub struct RoundPresence {
+    pub player: Player,
     pub schedule: bool,
 }
