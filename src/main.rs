@@ -203,8 +203,8 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
     let matching = weightedmatch::weightedmatch(weights, weightedmatch::MINIMIZE);
     eprintln!("matching = {:?}", matching);
     let trans = conn.transaction()?;
-    let statement =
-        conn.prepare("INSERT INTO games (played, white, black) VALUES ($1, $2, $3);")?;
+    let statement = conn
+        .prepare("INSERT INTO games (played, white, black, handicap) VALUES ($1, $2, $3, $4);")?;
     for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
         if (ratings[player], player) < (ratings[opponent], opponent) {
             continue;
@@ -213,7 +213,19 @@ fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> pos
             "schedule: {}({}) vs {}({})",
             player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
         );
-        statement.execute(&[&round_id, &player_ids[player], &player_ids[opponent]])?;
+        let diff = ratings[player] - ratings[opponent];
+        let handicap: f64 = if diff < 50.0 {
+            0.0
+        } else {
+            let unrounded = 0.5 + diff / 100.0;
+            (unrounded * 2.0).round() * 0.5
+        };
+        statement.execute(&[
+            &round_id,
+            &player_ids[player],
+            &player_ids[opponent],
+            &handicap,
+        ])?;
     }
     trans.commit()
 }
