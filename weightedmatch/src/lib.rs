@@ -1,6 +1,7 @@
 /* ************************************************************************* *
  *                                                                           *
  *        Copyright (c) 2004 Peter Cappello  <cappello@cs.ucsb.edu>          *
+ *        Copyright (c) 2019 Jilles Tjoelker <jilles@stack.nl>               *
  *                                                                           *
  *    Permission is hereby granted, free of charge, to any person obtaining  *
  *  a copy of this software and associated documentation files (the          *
@@ -32,6 +33,9 @@
  * Created on July 8, 2003, 11:00 AM
  *
  * @author  Peter Cappello
+ */
+/*
+ * Ported from Java to Rust in February 2019 by Jilles Tjoelker.
  */
 /*
  * Gabow's implementation of Edmonds' algorithm is described in chapter 6 of
