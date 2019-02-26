@@ -10,9 +10,10 @@
 <table border="1">
 <tr><th>Name<th>Rating
 {% for player in players %}
-<tr><td>{{player.name}}<td>{{player.rating.round()}}
+<tr><td><a href="player/{{player.id}}">{{player.name}}</a><td>{{player.rating.round()}}
 {% endfor %}
 <tr><td colspan="2"><a href="/add_player">New</a>
 </table>
+<a href="/">Rounds</a>
 </body>
 </html>

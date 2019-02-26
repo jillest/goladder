@@ -327,6 +327,79 @@ fn players(state: State<AppState>) -> impl Responder {
     PlayersTemplate { players }
 }
 
+#[derive(Template)]
+#[template(path = "edit_player.html")]
+struct EditPlayerTemplate {
+    is_new: bool,
+    player: Player,
+}
+
+fn add_player(_state: State<AppState>) -> impl Responder {
+    EditPlayerTemplate {
+        is_new: true,
+        player: Player {
+            id: 0,
+            name: "".into(),
+            rating: 1100.0,
+        },
+    }
+}
+
+fn add_player_save(
+    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+) -> actix_web::Result<HttpResponse> {
+    let name = &params.0["name"];
+    let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let conn = state.dbpool.get().unwrap();
+    conn.execute(
+        "INSERT INTO players (name, initialrating, currentrating) VALUES ($1, $2, $2);",
+        &[&name, &initialrating],
+    )
+    .unwrap();
+    Ok(HttpResponse::Found()
+        .header(http::header::LOCATION, "/players")
+        .finish())
+}
+
+fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
+    let player_id = params.0;
+    let conn = state.dbpool.get().unwrap();
+    let rows = conn
+        .query(
+            "SELECT id, name, initialrating FROM players WHERE id = $1",
+            &[&player_id],
+        )
+        .unwrap();
+    let player = {
+        let row = rows.iter().next().unwrap();
+        let id: i32 = row.get(0);
+        let name: String = row.get(1);
+        let rating: f64 = row.get(2);
+        Player { id, name, rating }
+    };
+    EditPlayerTemplate {
+        is_new: false,
+        player,
+    }
+}
+
+fn edit_player_save(
+    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+) -> actix_web::Result<HttpResponse> {
+    let player_id = pathparams.0;
+    let name = &params.0["name"];
+    let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let conn = state.dbpool.get().unwrap();
+    conn.execute(
+        "UPDATE players SET name = $1, initialrating = $2 WHERE id = $3;",
+        &[&name, &initialrating, &player_id],
+    )
+    .unwrap();
+    Ok(HttpResponse::Found()
+        .header(http::header::LOCATION, "/players")
+        .finish())
+}
+
 fn main() {
     let dbpool = Arc::new(db::create_pool());
     server::new(move || {
@@ -343,6 +416,14 @@ fn main() {
             r.method(http::Method::POST).with(add_round_run)
         })
         .route("/players", http::Method::GET, players)
+        .resource("/add_player", |r| {
+            r.method(http::Method::GET).with(add_player);
+            r.method(http::Method::POST).with(add_player_save)
+        })
+        .resource("/player/{id}", |r| {
+            r.method(http::Method::GET).with(edit_player);
+            r.method(http::Method::POST).with(edit_player_save)
+        })
     })
     .bind("127.0.0.1:8080")
     .unwrap()
