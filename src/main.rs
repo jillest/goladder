@@ -11,6 +11,7 @@ use askama::Template;
 
 mod db;
 mod models;
+mod update_ratings;
 
 use crate::models::{FormattableGameResult, Game, GameResult, Player, Round, RoundPresence};
 
@@ -390,11 +391,15 @@ fn edit_player_save(
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
     let conn = state.dbpool.get().unwrap();
-    conn.execute(
-        "UPDATE players SET name = $1, initialrating = $2 WHERE id = $3;",
-        &[&name, &initialrating, &player_id],
-    )
-    .unwrap();
+    let trans = conn.transaction().unwrap();
+    trans
+        .execute(
+            "UPDATE players SET name = $1, initialrating = $2 WHERE id = $3;",
+            &[&name, &initialrating, &player_id],
+        )
+        .unwrap();
+    update_ratings::update_ratings(&trans).unwrap();
+    trans.commit().unwrap();
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/players")
         .finish())

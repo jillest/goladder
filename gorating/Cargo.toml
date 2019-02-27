@@ -1,0 +1,7 @@
+[package]
+name = "gorating"
+version = "0.1.0"
+authors = ["Jilles Tjoelker <jilles@stack.nl>"]
+edition = "2018"
+
+[dependencies]
