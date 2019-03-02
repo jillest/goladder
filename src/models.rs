@@ -7,6 +7,11 @@ pub struct Player {
     pub rating: f64,
 }
 
+#[derive(Debug)]
+pub struct PlayerPresence {
+    pub default: bool,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]
 #[postgres(name = "gameresult")]
 pub enum GameResult {

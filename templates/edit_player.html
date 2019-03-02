@@ -36,6 +36,13 @@ action="/player/{{player.id}}"
 <td><label for="pinitialrating">Initial rating</label>
 <td><input type="text" name="initialrating" id="pinitialrating" value="{{player.rating}}">
 <tr>
+<td><label for="pdefaultschedule">Schedule by default</label>
+<td><input type="checkbox" name="defaultschedule" id="pdefaultschedule"
+{% if presence.default %}
+checked
+{% endif %}
+>
+<tr>
 <td colspan="2">
 <input type="submit"
 {% if is_new %}

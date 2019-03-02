@@ -13,7 +13,9 @@ mod db;
 mod models;
 mod update_ratings;
 
-use crate::models::{FormattableGameResult, Game, GameResult, Player, Round, RoundPresence};
+use crate::models::{
+    FormattableGameResult, Game, GameResult, Player, PlayerPresence, Round, RoundPresence,
+};
 
 struct AppState {
     dbpool: Arc<db::Pool>,
@@ -370,6 +372,7 @@ fn players(state: State<AppState>) -> impl Responder {
 struct EditPlayerTemplate {
     is_new: bool,
     player: Player,
+    presence: PlayerPresence,
 }
 
 fn add_player(_state: State<AppState>) -> impl Responder {
@@ -380,6 +383,7 @@ fn add_player(_state: State<AppState>) -> impl Responder {
             name: "".into(),
             rating: 1100.0,
         },
+        presence: PlayerPresence { default: true },
     }
 }
 
@@ -388,10 +392,11 @@ fn add_player_save(
 ) -> actix_web::Result<HttpResponse> {
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let defaultschedule = params.0.get("defaultschedule").is_some();
     let conn = state.dbpool.get().unwrap();
     conn.execute(
-        "INSERT INTO players (name, initialrating, currentrating) VALUES ($1, $2, $2);",
-        &[&name, &initialrating],
+        "INSERT INTO players (name, initialrating, currentrating, defaultschedule) VALUES ($1, $2, $2, $3);",
+        &[&name, &initialrating, &defaultschedule],
     )
     .unwrap();
     Ok(HttpResponse::Found()
@@ -404,20 +409,22 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Respond
     let conn = state.dbpool.get().unwrap();
     let rows = conn
         .query(
-            "SELECT id, name, initialrating FROM players WHERE id = $1",
+            "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = $1",
             &[&player_id],
         )
         .unwrap();
-    let player = {
+    let (player, presence) = {
         let row = rows.iter().next().unwrap();
         let id: i32 = row.get(0);
         let name: String = row.get(1);
         let rating: f64 = row.get(2);
-        Player { id, name, rating }
+        let default: bool = row.get(3);
+        (Player { id, name, rating }, PlayerPresence { default })
     };
     EditPlayerTemplate {
         is_new: false,
         player,
+        presence,
     }
 }
 
@@ -427,12 +434,13 @@ fn edit_player_save(
     let player_id = pathparams.0;
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let defaultschedule = params.0.get("defaultschedule").is_some();
     let conn = state.dbpool.get().unwrap();
     let trans = conn.transaction().unwrap();
     trans
         .execute(
-            "UPDATE players SET name = $1, initialrating = $2 WHERE id = $3;",
-            &[&name, &initialrating, &player_id],
+            "UPDATE players SET name = $1, initialrating = $2, defaultschedule = $3 WHERE id = $4;",
+            &[&name, &initialrating, &defaultschedule, &player_id],
         )
         .unwrap();
     update_ratings::update_ratings(&trans).unwrap();
