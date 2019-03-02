@@ -451,7 +451,11 @@ fn edit_player_save(
 }
 
 fn main() {
-    let dbpool = Arc::new(db::create_pool());
+    let dburl = std::env::args().nth(1).unwrap_or_else(|| {
+        eprintln!("Need a database URL such as \"postgresql://jilles@%2Ftmp/goladder\"");
+        std::process::exit(2);
+    });
+    let dbpool = Arc::new(db::create_pool(&dburl));
     server::new(move || {
         App::with_state(AppState {
             dbpool: dbpool.clone(),
