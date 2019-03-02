@@ -34,12 +34,26 @@ window.addEventListener('load', function() {
 <h2>Scheduled games</h2>
 {% if games.len() != 0 %}
 <table border="1">
-<tr><th colspan="2">Black<th colspan="2">White<th>Handicap<th>Result<th>Unpair
+<tr><th colspan="2">White<th colspan="2">Black<th>Handicap<th>Result<th>Action
 {% for game in games %}
 <tr><td>{{game.white.name}}<td>{{game.white.rating.round()}}
 <td>{{game.black.name}}<td>{{game.black.rating.round()}}
 <td>{{game.handicap}}<td>{{game.result}}
-<td><input type="checkbox" name="unpair{{game.id}}">
+<td><select name="action{{game.id}}">
+<option value="" selected>--</option>
+{% if game.result.0.is_some() %}
+<option value="delete">Delete game</option>
+<option value="None">Clear result</option>
+{% else %}
+<option value="delete">Unpair</option>
+{% endif %}
+<option value="BlackWins">Black wins</option>
+<option value="WhiteWins">White wins</option>
+<option value="Jigo">Jigo</option>
+<option value="BlackWinsByDefault">White forfeits</option>
+<option value="WhiteWinsByDefault">Black forfeits</option>
+<option value="BothLose">Both forfeit</option>
+</select>
 {% endfor %}
 </table>
 {% else %}

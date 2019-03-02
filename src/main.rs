@@ -134,20 +134,57 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
     }
 }
 
-fn unpair_games(
+fn modify_games(
     conn: &db::Connection,
     round_id: i32,
-    unpair_game_ids: &[i32],
+    game_actions: &[(i32, &str)],
 ) -> postgres::Result<()> {
-    if unpair_game_ids.len() == 0 {
+    if game_actions.len() == 0 {
         return Ok(());
     }
-    let n = conn.execute(
+    let unpair_game_ids: Vec<i32> = game_actions
+        .iter()
+        .filter_map(
+            |&(id, action)| {
+                if action == "delete" {
+                    Some(id)
+                } else {
+                    None
+                }
+            },
+        )
+        .collect();
+    let trans = conn.transaction()?;
+    let n = trans.execute(
         "DELETE FROM games WHERE played = $1 AND id = ANY ($2);",
         &[&round_id, &unpair_game_ids],
     )?;
     eprintln!("deleted {} game(s)", n);
-    Ok(())
+    let mut ratings_changed = n > 0;
+    let statement = trans.prepare("UPDATE games SET result = $1 WHERE played = $2 AND id = $3;")?;
+    for &(id, action) in game_actions {
+        let result = match action {
+            "delete" => continue,
+            "None" => None,
+            "BlackWins" => Some(GameResult::BlackWins),
+            "WhiteWins" => Some(GameResult::WhiteWins),
+            "Jigo" => Some(GameResult::Jigo),
+            "BlackWinsByDefault" => Some(GameResult::BlackWinsByDefault),
+            "WhiteWinsByDefault" => Some(GameResult::WhiteWinsByDefault),
+            "BothLose" => Some(GameResult::BothLose),
+            _ => {
+                eprintln!("unknown game action: {}", action);
+                continue;
+            }
+        };
+        if statement.execute(&[&result, &round_id, &id])? > 0 {
+            ratings_changed = true;
+        }
+    }
+    if ratings_changed {
+        update_ratings::update_ratings(&trans)?;
+    }
+    trans.commit()
 }
 
 fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> postgres::Result<()> {
@@ -247,19 +284,19 @@ fn schedule_round_run(
         })
         .collect();
     player_ids.sort_unstable();
-    let unpair_game_ids: Vec<i32> = params
+    let game_actions: Vec<(i32, &str)> = params
         .0
-        .keys()
-        .filter_map(|s| {
-            if s.starts_with("unpair") {
-                i32::from_str(&s[6..]).ok()
+        .iter()
+        .filter_map(|(k, v)| {
+            if k.starts_with("action") && v != "" {
+                i32::from_str(&k[6..]).ok().map(|id| (id, v.as_str()))
             } else {
                 None
             }
         })
         .collect();
     let conn = state.dbpool.get().unwrap();
-    unpair_games(&conn, round_id, &unpair_game_ids).unwrap();
+    modify_games(&conn, round_id, &game_actions).unwrap();
     pair_players(&conn, round_id, &player_ids).unwrap();
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, format!("/schedule/{}", round_id))
