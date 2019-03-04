@@ -42,6 +42,15 @@ action="/player/{{player.id}}"
 checked
 {% endif %}
 >
+{% for pround in presence.rounds %}
+<tr>
+<td><label for="pschedule{{pround.round_id}}">Schedule on {{pround.round_date}}</label>
+<td><select id="pschedule{{pround.round_id}}" name="schedule{{pround.round_id}}">
+<option value="default" {% if pround.is_default() %}selected{% endif %}>Default</option>
+<option value="true" {% if pround.is_present() %}selected{% endif %}>Present</option>
+<option value="false" {% if pround.is_absent() %}selected{% endif %}>Absent</option>
+</select>
+{% endfor %}
 <tr>
 <td colspan="2">
 <input type="submit"

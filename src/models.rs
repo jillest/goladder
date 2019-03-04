@@ -8,8 +8,28 @@ pub struct Player {
 }
 
 #[derive(Debug)]
+pub struct PlayerRoundPresence {
+    pub round_id: i32,
+    pub round_date: String,
+    pub schedule: Option<bool>,
+}
+
+impl PlayerRoundPresence {
+    pub fn is_default(&self) -> bool {
+        self.schedule.is_none()
+    }
+    pub fn is_present(&self) -> bool {
+        self.schedule == Some(true)
+    }
+    pub fn is_absent(&self) -> bool {
+        self.schedule == Some(false)
+    }
+}
+
+#[derive(Debug)]
 pub struct PlayerPresence {
     pub default: bool,
+    pub rounds: Vec<PlayerRoundPresence>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]

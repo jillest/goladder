@@ -14,7 +14,8 @@ mod models;
 mod update_ratings;
 
 use crate::models::{
-    FormattableGameResult, Game, GameResult, Player, PlayerPresence, Round, RoundPresence,
+    FormattableGameResult, Game, GameResult, Player, PlayerPresence, PlayerRoundPresence, Round,
+    RoundPresence,
 };
 
 struct AppState {
@@ -383,8 +384,55 @@ fn add_player(_state: State<AppState>) -> impl Responder {
             name: "".into(),
             rating: 1100.0,
         },
-        presence: PlayerPresence { default: true },
+        presence: PlayerPresence {
+            default: true,
+            rounds: vec![],
+        },
     }
+}
+
+fn update_player_presence(
+    trans: &postgres::transaction::Transaction,
+    player_id: i32,
+    params: &HashMap<String, String>,
+) -> postgres::Result<()> {
+    for (k, v) in params.iter() {
+        if !k.starts_with("schedule") {
+            continue;
+        }
+        let round_id = match i32::from_str(&k[8..]) {
+            Ok(x) => x,
+            Err(_) => continue,
+        };
+        match v.as_str() {
+            "default" => {
+                trans.execute(
+                    "DELETE FROM presence WHERE player = $1 AND \"when\" = $2;",
+                    &[&player_id, &round_id],
+                )?;
+            }
+            "true" => {
+                trans.execute(
+                    concat!(
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES ($1, $2, $3) ",
+                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = $3;"
+                    ),
+                    &[&player_id, &round_id, &true],
+                )?;
+            }
+            "false" => {
+                trans.execute(
+                    concat!(
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES ($1, $2, $3) ",
+                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = $3;"
+                    ),
+                    &[&player_id, &round_id, &false],
+                )?;
+            }
+            _ => eprintln!("bad presence update \"{}\"", v),
+        }
+    }
+    Ok(())
 }
 
 fn add_player_save(
@@ -409,6 +457,20 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Respond
     let conn = state.dbpool.get().unwrap();
     let rows = conn
         .query(
+            "SELECT r.id, r.date::TEXT, pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = $1 ORDER BY r.date",
+            &[&player_id],
+        )
+        .unwrap();
+    let rpresence: Vec<_> = rows
+        .iter()
+        .map(|row| PlayerRoundPresence {
+            round_id: row.get(0),
+            round_date: row.get(1),
+            schedule: row.get(2),
+        })
+        .collect();
+    let rows = conn
+        .query(
             "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = $1",
             &[&player_id],
         )
@@ -419,7 +481,13 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Respond
         let name: String = row.get(1);
         let rating: f64 = row.get(2);
         let default: bool = row.get(3);
-        (Player { id, name, rating }, PlayerPresence { default })
+        (
+            Player { id, name, rating },
+            PlayerPresence {
+                default,
+                rounds: rpresence,
+            },
+        )
     };
     EditPlayerTemplate {
         is_new: false,
@@ -443,6 +511,7 @@ fn edit_player_save(
             &[&name, &initialrating, &defaultschedule, &player_id],
         )
         .unwrap();
+    update_player_presence(&trans, player_id, &params.0).unwrap();
     update_ratings::update_ratings(&trans).unwrap();
     trans.commit().unwrap();
     Ok(HttpResponse::Found()
