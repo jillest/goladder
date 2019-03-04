@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <title>Scheduling round {{round.id}} on {{round.date}}</title>
+<style type="text/css">
+.clickableText {
+	cursor: default;
+}
+</style>
 <script>
 'use strict';
 function setAllCheckboxes(form, state) {
@@ -22,6 +27,11 @@ function verifyEven(form) {
 	submit.disabled = (n & 1) != 0;
 }
 
+function setGame(id, value) {
+	var elem = document.getElementById('g' + id);
+	elem.value = value;
+}
+
 window.addEventListener('load', function() {
 	verifyEven(document.getElementById('pairform'));
 }, false);
@@ -36,10 +46,10 @@ window.addEventListener('load', function() {
 <table border="1">
 <tr><th colspan="2">White<th colspan="2">Black<th>Handicap<th>Result<th>Action
 {% for game in games %}
-<tr><td>{{game.white.name}}<td>{{game.white.rating.round()}}
-<td>{{game.black.name}}<td>{{game.black.rating.round()}}
+<tr><td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating.round()}}
+<td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating.round()}}
 <td>{{game.handicap}}<td>{{game.result}}
-<td><select name="action{{game.id}}">
+<td><select name="action{{game.id}}" id="g{{game.id}}">
 <option value="" selected>--</option>
 {% if game.result.0.is_some() %}
 <option value="delete">Delete game</option>
