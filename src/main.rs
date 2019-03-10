@@ -15,7 +15,7 @@ mod update_ratings;
 
 use crate::models::{
     FormattableGameResult, Game, GameResult, Player, PlayerPresence, PlayerRoundPresence, Round,
-    RoundPresence,
+    RoundPresence, StandingsPlayer,
 };
 
 struct AppState {
@@ -519,6 +519,76 @@ fn edit_player_save(
         .finish())
 }
 
+#[derive(Template)]
+#[template(path = "standings.html")]
+struct StandingsTemplate {
+    players: Vec<StandingsPlayer>,
+    games: i64,
+    white_wins: i64,
+    black_wins: i64,
+    jigo: i64,
+    forfeit: i64,
+}
+
+fn standings(state: State<AppState>) -> impl Responder {
+    let conn = state.dbpool.get().unwrap();
+    let rows = conn
+        .query(
+            concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.*), ",
+            "COUNT((p.id = g.black AND g.result IN ('BlackWins', 'BlackWinsByDefault')) OR (p.id = g.white AND g.result IN ('WhiteWins', 'WhiteWinsByDefault')) OR NULL), ",
+            "COUNT(g.result = 'Jigo' OR NULL) ",
+            "FROM players p ",
+            "LEFT OUTER JOIN games g ON (p.id = g.black OR p.id = g.white) AND g.result IS NOT NULL ",
+            "GROUP BY p.id ORDER BY p.currentrating DESC, p.id"),
+            &[],
+        )
+        .unwrap();
+    let players: Vec<StandingsPlayer> = rows
+        .iter()
+        .map(|row| {
+            let id: i32 = row.get(0);
+            let name: String = row.get(1);
+            let initialrating: f64 = row.get(2);
+            let currentrating: f64 = row.get(3);
+            let games: i64 = row.get(4);
+            let wins: i64 = row.get(5);
+            let jigos: i64 = row.get(6);
+            let score = wins as f64 + 0.5 * jigos as f64;
+            StandingsPlayer {
+                id,
+                name,
+                initialrating,
+                currentrating,
+                score,
+                games,
+            }
+        })
+        .collect();
+    let rows = conn
+        .query(
+            concat!("SELECT COUNT(result), COUNT(result = 'WhiteWins' OR NULL), ",
+        "COUNT(result = 'BlackWins' OR NULL), COUNT(result = 'Jigo' OR NULL), ",
+        "COUNT(result IN ('WhiteWinsByDefault', 'BlackWinsByDefault', 'BothLose') OR NULL) ",
+        "FROM games;"),
+            &[],
+        )
+        .unwrap();
+    let row = rows.iter().next().unwrap();
+    let games: i64 = row.get(0);
+    let white_wins: i64 = row.get(1);
+    let black_wins: i64 = row.get(2);
+    let jigo: i64 = row.get(3);
+    let forfeit: i64 = row.get(4);
+    StandingsTemplate {
+        players,
+        games,
+        white_wins,
+        black_wins,
+        jigo,
+        forfeit,
+    }
+}
+
 fn main() {
     let dburl = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("Need a database URL such as \"postgresql://jilles@%2Ftmp/goladder\"");
@@ -547,6 +617,7 @@ fn main() {
             r.method(http::Method::GET).with(edit_player);
             r.method(http::Method::POST).with(edit_player_save)
         })
+        .route("/standings", http::Method::GET, standings)
     })
     .bind("127.0.0.1:8080")
     .unwrap()

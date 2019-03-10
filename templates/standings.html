@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Go ladder - standings</title>
+</head>
+
+<body>
+<h1>Go ladder - standings</h1>
+<table border="1">
+<tr><th>Name<th>Rating<th>Score<th>Games
+{% for player in players %}
+<tr><td>{{player.name}}
+<td>{{player.currentrating.round()}} ({{player.rating_diff()}})
+<td>{{player.score}}
+<td>{{player.games}}
+{% endfor %}
+</table>
+<br>
+<table border="1">
+<tr><td>Games<td>{{games}}
+<tr><td>White wins<td>{{white_wins}}
+<tr><td>Black wins<td>{{black_wins}}
+<tr><td>Jigo<td>{{jigo}}
+{% if forfeit != 0 %}
+<tr><td>Forfeit<td>{{forfeit}}
+{% endif %}
+</table>
+</body>
+</html>

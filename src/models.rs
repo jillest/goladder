@@ -81,3 +81,75 @@ pub struct RoundPresence {
     pub player: Player,
     pub schedule: bool,
 }
+
+pub struct StandingsPlayer {
+    pub id: i32,
+    pub name: String,
+    pub initialrating: f64,
+    pub currentrating: f64,
+    pub score: f64,
+    pub games: i64,
+}
+
+pub struct RatingDiff(f64);
+
+impl std::fmt::Display for RatingDiff {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}{}",
+            if self.0 < 0.0 { '−' } else { '+' },
+            self.0.round().abs()
+        )
+    }
+}
+
+impl StandingsPlayer {
+    pub fn rating_diff(&self) -> RatingDiff {
+        RatingDiff(self.currentrating - self.initialrating)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_rating_diff_1() {
+        let p = StandingsPlayer {
+            id: 1,
+            name: "Dummy".into(),
+            initialrating: 1000.0,
+            currentrating: 1100.3,
+            score: 3.0,
+            games: 5,
+        };
+        assert_eq!(&format!("{}", p.rating_diff()), "+100");
+    }
+
+    #[test]
+    fn test_rating_diff_2() {
+        let p = StandingsPlayer {
+            id: 1,
+            name: "Dummy".into(),
+            initialrating: 1001.0,
+            currentrating: 990.0,
+            score: 0.0,
+            games: 1,
+        };
+        assert_eq!(&format!("{}", p.rating_diff()), "−11");
+    }
+
+    #[test]
+    fn test_rating_diff_3() {
+        let p = StandingsPlayer {
+            id: 1,
+            name: "Dummy".into(),
+            initialrating: 1001.0,
+            currentrating: 1000.6,
+            score: 0.5,
+            games: 1,
+        };
+        assert_eq!(&format!("{}", p.rating_diff()), "−0");
+    }
+}
