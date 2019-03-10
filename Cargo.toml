@@ -14,10 +14,7 @@ weightedmatch = { path = "weightedmatch" }
 gorating = { path = "gorating" }
 
 [dependencies.askama]
-version = "0.7.2"
+version = "0.8"
 features = ["with-actix-web"]
-
-[build-dependencies.askama]
-version = "0.7.2"
 
 [workspace]
