@@ -1,9 +1,11 @@
-use r2d2_postgres::{PostgresConnectionManager, TlsMode};
+use std::ffi::OsStr;
 
-pub type Pool = r2d2::Pool<r2d2_postgres::PostgresConnectionManager>;
-pub type Connection = r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager>;
+use r2d2_sqlite::SqliteConnectionManager;
 
-pub fn create_pool(url: &str) -> Pool {
-    let manager = PostgresConnectionManager::new(url, TlsMode::None).unwrap();
+pub type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
+pub type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
+
+pub fn create_pool(path: &OsStr) -> Pool {
+    let manager = SqliteConnectionManager::file(path);
     Pool::builder().max_size(2).build(manager).unwrap()
 }

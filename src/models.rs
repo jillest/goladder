@@ -1,4 +1,4 @@
-use postgres::to_sql_checked;
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Player {
@@ -32,8 +32,7 @@ pub struct PlayerPresence {
     pub rounds: Vec<PlayerRoundPresence>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, FromSql, ToSql)]
-#[postgres(name = "gameresult")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GameResult {
     WhiteWins,
     BlackWins,
@@ -41,6 +40,38 @@ pub enum GameResult {
     WhiteWinsByDefault,
     BlackWinsByDefault,
     BothLose,
+}
+
+#[derive(Debug)]
+pub struct BadGameResult;
+
+impl FromStr for GameResult {
+    type Err = BadGameResult;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "WhiteWins" => Ok(GameResult::WhiteWins),
+            "BlackWins" => Ok(GameResult::BlackWins),
+            "Jigo" => Ok(GameResult::Jigo),
+            "WhiteWinsByDefault" => Ok(GameResult::WhiteWinsByDefault),
+            "BlackWinsByDefault" => Ok(GameResult::BlackWinsByDefault),
+            "BothLose" => Ok(GameResult::BothLose),
+            _ => Err(BadGameResult),
+        }
+    }
+}
+
+impl GameResult {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            GameResult::WhiteWins => "WhiteWins",
+            GameResult::BlackWins => "BlackWins",
+            GameResult::Jigo => "Jigo",
+            GameResult::WhiteWinsByDefault => "WhiteWinsByDefault",
+            GameResult::BlackWinsByDefault => "BlackWinsByDefault",
+            GameResult::BothLose => "BothLose",
+        }
+    }
 }
 
 #[derive(Debug)]

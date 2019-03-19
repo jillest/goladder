@@ -14,17 +14,17 @@ Requirements
 ------------
 
 * Rust (see https://rustup.rs/ and https://www.rust-lang.org/)
-* PostgreSQL
+* libsqlite3 (see "Notes on building" in https://crates.io/crates/rusqlite)
+  Minimal version: 3.24.0
 
 Installation
 ------------
 
-* Create a PostgreSQL database.
+* Create an SQLite3 database.
 * Create the necessary tables and types by running `database/schema.sql`
-  (for example `psql goladder <database/schema.sql`).
+  (for example `sqlite3 goladder.db <database/schema.sql`).
 * Compile and run the application using `cargo run --release` followed
-  by the database connection URL such as
-  `postgresql://jilles@%2Ftmp/goladder`.
+  by the database pathname.
   By omitting `--release` one can create a debug build, which compiles much
   faster but runs slower.
 * Go to http://127.0.0.1:8080/ in a Web browser (this is currently
@@ -40,10 +40,3 @@ It is strongly recommended to place a reverse proxy such as nginx in front
 of this. This is useful for TLS, for example. Also, since the application
 currently does not do authentication, the reverse proxy will have to handle
 that.
-
-Using the `x86_64-unknown-linux-musl` target, a binary can be created that
-runs on pretty much any amd64 Linux kernel:
-```sh
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target=x86_64-unknown-linux-musl
-```

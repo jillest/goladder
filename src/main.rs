@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate postgres_derive;
-
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -8,6 +5,8 @@ use std::sync::Arc;
 
 use actix_web::{http, server, App, Form, HttpResponse, Path, Responder, State};
 use askama::Template;
+use rusqlite::types::ToSql;
+use rusqlite::{OptionalExtension, NO_PARAMS};
 
 mod db;
 mod models;
@@ -30,17 +29,18 @@ struct IndexTemplate {
 
 fn index(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query("SELECT id, date::TEXT FROM rounds ORDER BY date", &[])
+    let mut stmt = conn
+        .prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")
         .unwrap();
-    let rounds: Vec<Round> = rows
-        .iter()
-        .map(|row| {
+    let rounds: Vec<Round> = stmt
+        .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
             let date: String = row.get(1);
             Round { id, date }
         })
-        .collect();
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
     IndexTemplate { rounds }
 }
 
@@ -55,24 +55,25 @@ struct ScheduleRoundTemplate {
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
     let round_id = params.0;
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query("SELECT date::TEXT FROM rounds WHERE id=$1;", &[&round_id])
-        .unwrap();
-    let round_date = rows.iter().next().map_or_else(
-        || "??".to_owned(),
-        |row| {
-            let date: String = row.get(0);
-            date
-        },
-    );
+    let round_date = conn
+        .query_row(
+            "SELECT CAST(date AS TEXT) FROM rounds WHERE id=?1",
+            &[&round_id],
+            |row| {
+                let date: String = row.get(0);
+                date
+            },
+        )
+        .optional()
+        .unwrap()
+        .unwrap_or("??".to_owned());
     let round = Round {
         id: round_id,
         date: round_date,
     };
-    let rows = conn.query("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = $1 ORDER BY g.id;", &[&round_id]).unwrap();
-    let games: Vec<Game> = rows
-        .iter()
-        .map(|row| {
+    let mut stmt = conn.prepare("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = ?1 ORDER BY g.id").unwrap();
+    let games: Vec<Game> = stmt
+        .query_map(&[&round_id], |row| {
             let id: i32 = row.get(0);
             let white_id: i32 = row.get(1);
             let white: String = row.get(2);
@@ -81,7 +82,8 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
             let black: String = row.get(5);
             let black_rating: f64 = row.get(6);
             let handicap: f64 = row.get(7);
-            let result: Option<GameResult> = row.get(8);
+            let result_str: Option<String> = row.get(8);
+            let result = result_str.map(|s| GameResult::from_str(&s).unwrap());
             Game {
                 id,
                 white: Player {
@@ -98,7 +100,9 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
                 result: FormattableGameResult(result),
             }
         })
-        .collect();
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
     let pairedplayers = {
         let mut pairedplayers = HashSet::with_capacity(2 * games.len());
         for game in &games {
@@ -107,11 +111,10 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
         }
         pairedplayers
     };
-    let rows = conn.query("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = $1;",
-        &[&round_id]).unwrap();
-    let presences: Vec<RoundPresence> = rows
-        .iter()
-        .filter_map(|row| {
+    let mut stmt = conn.prepare("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = ?1",
+        ).unwrap();
+    let presences: Vec<RoundPresence> = stmt
+        .query_map(&[&round_id], |row| {
             let player_id: i32 = row.get(0);
             let name: String = row.get(1);
             let rating: f64 = row.get(2);
@@ -129,7 +132,10 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
                 })
             }
         })
-        .collect();
+        .unwrap()
+        .filter_map(Result::transpose)
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
     ScheduleRoundTemplate {
         round,
         games,
@@ -138,36 +144,25 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
 }
 
 fn modify_games(
-    conn: &db::Connection,
+    conn: &mut db::Connection,
     round_id: i32,
     game_actions: &[(i32, &str)],
-) -> postgres::Result<()> {
+) -> rusqlite::Result<()> {
     if game_actions.len() == 0 {
         return Ok(());
     }
-    let unpair_game_ids: Vec<i32> = game_actions
-        .iter()
-        .filter_map(
-            |&(id, action)| {
-                if action == "delete" {
-                    Some(id)
-                } else {
-                    None
-                }
-            },
-        )
-        .collect();
     let trans = conn.transaction()?;
-    let n = trans.execute(
-        "DELETE FROM games WHERE played = $1 AND id = ANY ($2);",
-        &[&round_id, &unpair_game_ids],
-    )?;
-    eprintln!("deleted {} game(s)", n);
-    let mut ratings_changed = n > 0;
-    let statement = trans.prepare("UPDATE games SET result = $1 WHERE played = $2 AND id = $3;")?;
+    let mut ratings_changed = false;
+    let mut d_stmt = trans.prepare("DELETE FROM games WHERE played = ?1 AND id = ?2")?;
+    let mut u_stmt = trans.prepare("UPDATE games SET result = ?1 WHERE played = ?2 AND id = ?3")?;
     for &(id, action) in game_actions {
-        let result = match action {
-            "delete" => continue,
+        let result: Option<&str> = match action {
+            "delete" => {
+                if d_stmt.execute(&[round_id, id])? > 0 {
+                    ratings_changed = true;
+                }
+                continue;
+            }
             "None" => None,
             "BlackWins" => Some(GameResult::BlackWins),
             "WhiteWins" => Some(GameResult::WhiteWins),
@@ -179,94 +174,120 @@ fn modify_games(
                 eprintln!("unknown game action: {}", action);
                 continue;
             }
-        };
-        if statement.execute(&[&result, &round_id, &id])? > 0 {
+        }
+        .map(GameResult::to_str);
+        if u_stmt.execute::<&[&dyn ToSql]>(&[&result, &round_id, &id])? > 0 {
             ratings_changed = true;
         }
     }
+    drop(u_stmt);
+    drop(d_stmt);
     if ratings_changed {
         update_ratings::update_ratings(&trans)?;
     }
     trans.commit()
 }
 
-fn pair_players(conn: &db::Connection, round_id: i32, player_ids: &[i32]) -> postgres::Result<()> {
+fn pair_players(
+    conn: &mut db::Connection,
+    round_id: i32,
+    player_ids: &[i32],
+) -> rusqlite::Result<()> {
     if player_ids.len() == 0 {
         return Ok(());
     }
-    let rows = conn.query("SELECT g.white, g.black FROM games g, rounds r WHERE g.played = r.id AND (g.white = ANY ($1) OR g.black = ANY ($1)) AND g.result IS NOT NULL ORDER BY r.date DESC, r.id DESC;",
-        &[&player_ids])?;
     let mut played = vec![0; player_ids.len()];
     let mut weights = vec![vec![0; player_ids.len()]; player_ids.len()];
-    for row in &rows {
-        let white: i32 = row.get(0);
-        let black: i32 = row.get(1);
-        let white_idx_opt = player_ids.binary_search(&white).ok();
-        let black_idx_opt = player_ids.binary_search(&black).ok();
-        if let Some(white_idx) = white_idx_opt {
-            played[white_idx] += 1;
+    let trans = conn.transaction()?;
+    {
+        let mut stmt = trans.prepare("SELECT g.white, g.black FROM games g, rounds r WHERE g.played = r.id AND g.result IS NOT NULL ORDER BY r.date DESC, r.id DESC")?;
+        struct GameRow {
+            white: i32,
+            black: i32,
         }
-        if let Some(black_idx) = black_idx_opt {
-            played[black_idx] += 1;
-        }
-        if let (Some(white_idx), Some(black_idx)) = (white_idx_opt, black_idx_opt) {
-            let w = &mut weights[white_idx][black_idx];
-            let val = i32::min(played[white_idx], played[black_idx]);
-            if *w == 0 || *w > val {
-                *w = val;
-                weights[black_idx][white_idx] = *w;
+        let rows: Vec<GameRow> = stmt
+            .query_map(NO_PARAMS, |row| GameRow {
+                white: row.get(0),
+                black: row.get(1),
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        for row in &rows {
+            let white_idx_opt = player_ids.binary_search(&row.white).ok();
+            let black_idx_opt = player_ids.binary_search(&row.black).ok();
+            if let Some(white_idx) = white_idx_opt {
+                played[white_idx] += 1;
+            }
+            if let Some(black_idx) = black_idx_opt {
+                played[black_idx] += 1;
+            }
+            if let (Some(white_idx), Some(black_idx)) = (white_idx_opt, black_idx_opt) {
+                let w = &mut weights[white_idx][black_idx];
+                let val = i32::min(played[white_idx], played[black_idx]);
+                if *w == 0 || *w > val {
+                    *w = val;
+                    weights[black_idx][white_idx] = *w;
+                }
             }
         }
     }
-    let rows = conn.query(
-        "SELECT currentrating FROM players WHERE id = ANY ($1) ORDER BY id;",
-        &[&player_ids],
-    )?;
-    let ratings: Vec<f64> = rows.iter().map(|row| row.get(0)).collect();
-    assert_eq!(ratings.len(), player_ids.len());
-    const DONT_MATCH_AGAIN_PARAM: f64 = 1000.0;
-    const DONT_MATCH_AGAIN_DECAY: f64 = 2.0;
-    const RATING_POINTS_PER_CLASS: f64 = 50.0;
-    for (i, w_row) in weights.iter_mut().enumerate() {
-        for (j, w) in w_row.iter_mut().enumerate() {
-            if i == j {
-                continue;
+    let ratings: Vec<f64>;
+    {
+        let mut stmt = trans.prepare("SELECT id, currentrating FROM players ORDER BY id")?;
+        ratings = stmt
+            .query_map(NO_PARAMS, |row| {
+                let id: i32 = row.get(0);
+                player_ids.binary_search(&id).ok().map(|_| row.get(1))
+            })?
+            .filter_map(Result::transpose)
+            .collect::<rusqlite::Result<_>>()?;
+        assert_eq!(ratings.len(), player_ids.len());
+        const DONT_MATCH_AGAIN_PARAM: f64 = 1000.0;
+        const DONT_MATCH_AGAIN_DECAY: f64 = 2.0;
+        const RATING_POINTS_PER_CLASS: f64 = 50.0;
+        for (i, w_row) in weights.iter_mut().enumerate() {
+            for (j, w) in w_row.iter_mut().enumerate() {
+                if i == j {
+                    continue;
+                }
+                if *w > 0 {
+                    *w = (DONT_MATCH_AGAIN_PARAM
+                        * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp())
+                        as i32;
+                }
+                let diff = (ratings[i] - ratings[j]) / RATING_POINTS_PER_CLASS;
+                *w += (diff * diff) as i32;
             }
-            if *w > 0 {
-                *w = (DONT_MATCH_AGAIN_PARAM * (-(*w - 1) as f64 / DONT_MATCH_AGAIN_DECAY).exp())
-                    as i32;
-            }
-            let diff = (ratings[i] - ratings[j]) / RATING_POINTS_PER_CLASS;
-            *w += (diff * diff) as i32;
         }
     }
     eprintln!("weights = {:?}", weights);
     let matching = weightedmatch::weightedmatch(weights, weightedmatch::MINIMIZE);
     eprintln!("matching = {:?}", matching);
-    let trans = conn.transaction()?;
-    let statement = conn
-        .prepare("INSERT INTO games (played, white, black, handicap) VALUES ($1, $2, $3, $4);")?;
-    for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
-        if (ratings[player], player) < (ratings[opponent], opponent) {
-            continue;
+    {
+        let mut stmt = trans.prepare(
+            "INSERT INTO games (played, white, black, handicap) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (player, opponent) in matching.iter().skip(1).map(|idx| idx - 1).enumerate() {
+            if (ratings[player], player) < (ratings[opponent], opponent) {
+                continue;
+            }
+            eprintln!(
+                "schedule: {}({}) vs {}({})",
+                player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
+            );
+            let diff = ratings[player] - ratings[opponent];
+            let handicap: f64 = if diff < 50.0 {
+                0.0
+            } else {
+                let unrounded = 0.5 + diff / 100.0;
+                (unrounded * 2.0).round() * 0.5
+            };
+            stmt.execute::<&[&dyn ToSql]>(&[
+                &round_id,
+                &player_ids[player],
+                &player_ids[opponent],
+                &handicap,
+            ])?;
         }
-        eprintln!(
-            "schedule: {}({}) vs {}({})",
-            player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
-        );
-        let diff = ratings[player] - ratings[opponent];
-        let handicap: f64 = if diff < 50.0 {
-            0.0
-        } else {
-            let unrounded = 0.5 + diff / 100.0;
-            (unrounded * 2.0).round() * 0.5
-        };
-        statement.execute(&[
-            &round_id,
-            &player_ids[player],
-            &player_ids[opponent],
-            &handicap,
-        ])?;
     }
     trans.commit()
 }
@@ -298,9 +319,9 @@ fn schedule_round_run(
             }
         })
         .collect();
-    let conn = state.dbpool.get().unwrap();
-    modify_games(&conn, round_id, &game_actions).unwrap();
-    pair_players(&conn, round_id, &player_ids).unwrap();
+    let mut conn = state.dbpool.get().unwrap();
+    modify_games(&mut conn, round_id, &game_actions).unwrap();
+    pair_players(&mut conn, round_id, &player_ids).unwrap();
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, format!("/schedule/{}", round_id))
         .finish())
@@ -314,16 +335,13 @@ struct AddRoundTemplate {
 
 fn add_round(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query(
-            "SELECT (COALESCE(MAX(date) + '1 week'::interval, NOW()))::date::TEXT FROM rounds;",
-            &[],
+    let defaultdate: String = conn
+        .query_row(
+            "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
+            NO_PARAMS,
+            |row| row.get(0),
         )
         .unwrap();
-    let defaultdate: String = {
-        let row = rows.iter().next().unwrap();
-        row.get(0)
-    };
     AddRoundTemplate { defaultdate }
 }
 
@@ -332,11 +350,8 @@ fn add_round_run(
 ) -> actix_web::Result<HttpResponse> {
     let date = &params.0["date"];
     let conn = state.dbpool.get().unwrap();
-    conn.execute(
-        "INSERT INTO rounds (date) VALUES ($1::TEXT::date);",
-        &[&date],
-    )
-    .unwrap();
+    conn.execute("INSERT INTO rounds (date) VALUES (?1)", &[date])
+        .unwrap();
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/")
         .finish())
@@ -350,21 +365,19 @@ struct PlayersTemplate {
 
 fn players(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query(
-            "SELECT id, name, currentrating FROM players ORDER BY currentrating DESC",
-            &[],
-        )
+    let mut stmt = conn
+        .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")
         .unwrap();
-    let players: Vec<Player> = rows
-        .iter()
-        .map(|row| {
+    let players: Vec<Player> = stmt
+        .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
             let name: String = row.get(1);
             let rating: f64 = row.get(2);
             Player { id, name, rating }
         })
-        .collect();
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
     PlayersTemplate { players }
 }
 
@@ -392,10 +405,10 @@ fn add_player(_state: State<AppState>) -> impl Responder {
 }
 
 fn update_player_presence(
-    trans: &postgres::transaction::Transaction,
+    trans: &rusqlite::Transaction,
     player_id: i32,
     params: &HashMap<String, String>,
-) -> postgres::Result<()> {
+) -> rusqlite::Result<()> {
     for (k, v) in params.iter() {
         if !k.starts_with("schedule") {
             continue;
@@ -406,25 +419,25 @@ fn update_player_presence(
         };
         match v.as_str() {
             "default" => {
-                trans.execute(
-                    "DELETE FROM presence WHERE player = $1 AND \"when\" = $2;",
+                trans.execute::<&[&dyn ToSql]>(
+                    "DELETE FROM presence WHERE player = ?1 AND \"when\" = ?2",
                     &[&player_id, &round_id],
                 )?;
             }
             "true" => {
-                trans.execute(
+                trans.execute::<&[&dyn ToSql]>(
                     concat!(
-                        "INSERT INTO presence (player, \"when\", schedule) VALUES ($1, $2, $3) ",
-                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = $3;"
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3) ",
+                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = ?3"
                     ),
                     &[&player_id, &round_id, &true],
                 )?;
             }
             "false" => {
-                trans.execute(
+                trans.execute::<&[&dyn ToSql]>(
                     concat!(
-                        "INSERT INTO presence (player, \"when\", schedule) VALUES ($1, $2, $3) ",
-                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = $3;"
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3) ",
+                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = ?3"
                     ),
                     &[&player_id, &round_id, &false],
                 )?;
@@ -442,8 +455,8 @@ fn add_player_save(
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
     let defaultschedule = params.0.get("defaultschedule").is_some();
     let conn = state.dbpool.get().unwrap();
-    conn.execute(
-        "INSERT INTO players (name, initialrating, currentrating, defaultschedule) VALUES ($1, $2, $2, $3);",
+    conn.execute::<&[&dyn ToSql]>(
+        "INSERT INTO players (name, initialrating, currentrating, defaultschedule) VALUES (?1, ?2, ?2, ?3)",
         &[&name, &initialrating, &defaultschedule],
     )
     .unwrap();
@@ -455,40 +468,39 @@ fn add_player_save(
 fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
     let player_id = params.0;
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query(
-            "SELECT r.id, r.date::TEXT, pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = $1 ORDER BY r.date",
-            &[&player_id],
+    let mut stmt = conn
+        .prepare(
+            "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ORDER BY r.date",
         )
         .unwrap();
-    let rpresence: Vec<_> = rows
-        .iter()
-        .map(|row| PlayerRoundPresence {
+    let rpresence: Vec<_> = stmt
+        .query_map(&[&player_id], |row| PlayerRoundPresence {
             round_id: row.get(0),
             round_date: row.get(1),
             schedule: row.get(2),
         })
-        .collect();
-    let rows = conn
-        .query(
-            "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = $1",
-            &[&player_id],
-        )
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
         .unwrap();
-    let (player, presence) = {
-        let row = rows.iter().next().unwrap();
-        let id: i32 = row.get(0);
-        let name: String = row.get(1);
-        let rating: f64 = row.get(2);
-        let default: bool = row.get(3);
-        (
-            Player { id, name, rating },
-            PlayerPresence {
-                default,
-                rounds: rpresence,
+    let (player, presence) = conn
+        .query_row(
+            "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = ?1",
+            &[&player_id],
+            |row| {
+                let id: i32 = row.get(0);
+                let name: String = row.get(1);
+                let rating: f64 = row.get(2);
+                let default: bool = row.get(3);
+                (
+                    Player { id, name, rating },
+                    PlayerPresence {
+                        default,
+                        rounds: rpresence,
+                    },
+                )
             },
         )
-    };
+        .unwrap();
     EditPlayerTemplate {
         is_new: false,
         player,
@@ -503,11 +515,11 @@ fn edit_player_save(
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
     let defaultschedule = params.0.get("defaultschedule").is_some();
-    let conn = state.dbpool.get().unwrap();
+    let mut conn = state.dbpool.get().unwrap();
     let trans = conn.transaction().unwrap();
     trans
-        .execute(
-            "UPDATE players SET name = $1, initialrating = $2, defaultschedule = $3 WHERE id = $4;",
+        .execute::<&[&dyn ToSql]>(
+            "UPDATE players SET name = ?1, initialrating = ?2, defaultschedule = ?3 WHERE id = ?4",
             &[&name, &initialrating, &defaultschedule, &player_id],
         )
         .unwrap();
@@ -532,20 +544,18 @@ struct StandingsTemplate {
 
 fn standings(state: State<AppState>) -> impl Responder {
     let conn = state.dbpool.get().unwrap();
-    let rows = conn
-        .query(
-            concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.*), ",
+    let mut stmt = conn
+        .prepare(
+            concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.id), ",
             "COUNT((p.id = g.black AND g.result IN ('BlackWins', 'BlackWinsByDefault')) OR (p.id = g.white AND g.result IN ('WhiteWins', 'WhiteWinsByDefault')) OR NULL), ",
             "COUNT(g.result = 'Jigo' OR NULL) ",
             "FROM players p ",
             "LEFT OUTER JOIN games g ON (p.id = g.black OR p.id = g.white) AND g.result IS NOT NULL ",
             "GROUP BY p.id ORDER BY p.currentrating DESC, p.id"),
-            &[],
         )
         .unwrap();
-    let players: Vec<StandingsPlayer> = rows
-        .iter()
-        .map(|row| {
+    let players: Vec<StandingsPlayer> = stmt
+        .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
             let name: String = row.get(1);
             let initialrating: f64 = row.get(2);
@@ -563,22 +573,26 @@ fn standings(state: State<AppState>) -> impl Responder {
                 games,
             }
         })
-        .collect();
-    let rows = conn
-        .query(
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    let (games, white_wins, black_wins, jigo, forfeit) = conn
+        .query_row(
             concat!("SELECT COUNT(result), COUNT(result = 'WhiteWins' OR NULL), ",
         "COUNT(result = 'BlackWins' OR NULL), COUNT(result = 'Jigo' OR NULL), ",
         "COUNT(result IN ('WhiteWinsByDefault', 'BlackWinsByDefault', 'BothLose') OR NULL) ",
-        "FROM games;"),
-            &[],
+        "FROM games"),
+            NO_PARAMS,
+            |row| {
+                let games: i64 = row.get(0);
+                let white_wins: i64 = row.get(1);
+                let black_wins: i64 = row.get(2);
+                let jigo: i64 = row.get(3);
+                let forfeit: i64 = row.get(4);
+                (games, white_wins, black_wins, jigo, forfeit)
+            },
         )
         .unwrap();
-    let row = rows.iter().next().unwrap();
-    let games: i64 = row.get(0);
-    let white_wins: i64 = row.get(1);
-    let black_wins: i64 = row.get(2);
-    let jigo: i64 = row.get(3);
-    let forfeit: i64 = row.get(4);
     StandingsTemplate {
         players,
         games,
@@ -590,11 +604,11 @@ fn standings(state: State<AppState>) -> impl Responder {
 }
 
 fn main() {
-    let dburl = std::env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("Need a database URL such as \"postgresql://jilles@%2Ftmp/goladder\"");
+    let dbpath = std::env::args_os().nth(1).unwrap_or_else(|| {
+        eprintln!("Need a database pathname such as \"goladder.db\"");
         std::process::exit(2);
     });
-    let dbpool = Arc::new(db::create_pool(&dburl));
+    let dbpool = Arc::new(db::create_pool(&dbpath));
     server::new(move || {
         App::with_state(AppState {
             dbpool: dbpool.clone(),
