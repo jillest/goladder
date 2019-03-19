@@ -14,6 +14,7 @@ Requirements
 ------------
 
 * Rust (see https://rustup.rs/ and https://www.rust-lang.org/)
+  Minimal version: 1.33
 * libsqlite3 (see "Notes on building" in https://crates.io/crates/rusqlite)
   Minimal version: 3.24.0
 
