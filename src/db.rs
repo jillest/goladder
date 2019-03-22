@@ -7,5 +7,5 @@ pub type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManage
 
 pub fn create_pool(path: &OsStr) -> Pool {
     let manager = SqliteConnectionManager::file(path);
-    Pool::builder().max_size(2).build(manager).unwrap()
+    Pool::builder().max_size(1).build(manager).unwrap()
 }
