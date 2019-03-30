@@ -69,6 +69,22 @@ impl RatingSystem {
         };
         self.con(rating) * (result - expected_result + 0.5 * self.epsilon)
     }
+
+    /// Calculate the handicap for a given (positive) rating difference.
+    /// ```
+    /// let sys = gorating::RatingSystem::new();
+    /// let h = sys.calculate_handicap(200.0);
+    /// assert_eq!(h, 2.5);
+    /// ```
+    pub fn calculate_handicap(&self, rating_diff: f64) -> f64 {
+        assert!(rating_diff >= 0.0);
+        if rating_diff < 50.0 {
+            0.0
+        } else {
+            let unrounded = 0.5 + rating_diff / 100.0;
+            (unrounded * 2.0).round() * 0.5
+        }
+    }
 }
 
 #[cfg(test)]

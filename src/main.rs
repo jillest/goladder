@@ -275,12 +275,7 @@ fn pair_players(
                 player_ids[player], ratings[player], player_ids[opponent], ratings[opponent]
             );
             let diff = ratings[player] - ratings[opponent];
-            let handicap: f64 = if diff < 50.0 {
-                0.0
-            } else {
-                let unrounded = 0.5 + diff / 100.0;
-                (unrounded * 2.0).round() * 0.5
-            };
+            let handicap = update_ratings::RATINGS.calculate_handicap(diff);
             stmt.execute::<&[&dyn ToSql]>(&[
                 &round_id,
                 &player_ids[player],

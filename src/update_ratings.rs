@@ -7,7 +7,7 @@ use rusqlite::{Transaction, NO_PARAMS};
 
 use crate::models::GameResult;
 
-static RATINGS: RatingSystem = RatingSystem {
+pub static RATINGS: RatingSystem = RatingSystem {
     epsilon: 0.016,
     min_rating: -400.0,
 };
