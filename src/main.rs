@@ -51,9 +51,11 @@ fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpRes
                 Cow::Borrowed(bytes) => bytes.into(),
                 Cow::Owned(bytes) => bytes.into(),
             };
-            HttpResponse::Ok().content_type(guess_content_type(path)).body(body)
-        },
-        None => HttpResponse::NotFound().body("404 Not found")
+            HttpResponse::Ok()
+                .content_type(guess_content_type(path))
+                .body(body)
+        }
+        None => HttpResponse::NotFound().body("404 Not found"),
     }
 }
 
