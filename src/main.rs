@@ -1,12 +1,14 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use actix_web::{http, server, App, Form, HttpResponse, Path, Responder, State};
+use actix_web::{http, server, App, Body, Form, HttpResponse, Path, Responder, State};
 use askama::Template;
 use rusqlite::types::ToSql;
 use rusqlite::{OptionalExtension, NO_PARAMS};
+use rust_embed::RustEmbed;
 
 mod db;
 mod models;
@@ -19,6 +21,40 @@ use crate::models::{
 
 struct AppState {
     dbpool: Arc<db::Pool>,
+}
+
+#[derive(RustEmbed)]
+#[folder = "static/"]
+struct StaticAsset;
+
+fn guess_content_type(path: &str) -> &'static str {
+    if path.ends_with(".html") {
+        "text/html"
+    } else if path.ends_with(".png") {
+        "image/png"
+    } else if path.ends_with(".jpg") {
+        "image/jpeg"
+    } else if path.ends_with(".js") {
+        "application/javascript"
+    } else if path.ends_with(".css") {
+        "text/css"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpResponse {
+    let path = &params.0;
+    match StaticAsset::get(path) {
+        Some(content) => {
+            let body: Body = match content {
+                Cow::Borrowed(bytes) => bytes.into(),
+                Cow::Owned(bytes) => bytes.into(),
+            };
+            HttpResponse::Ok().content_type(guess_content_type(path)).body(body)
+        },
+        None => HttpResponse::NotFound().body("404 Not found")
+    }
 }
 
 #[derive(Template)]
@@ -627,6 +663,9 @@ fn main() {
             r.method(http::Method::POST).with(edit_player_save)
         })
         .route("/standings", http::Method::GET, standings)
+        .resource("/static/{path:.*}", |r| {
+            r.method(http::Method::GET).with(static_asset)
+        })
     })
     .bind("127.0.0.1:8080")
     .unwrap()

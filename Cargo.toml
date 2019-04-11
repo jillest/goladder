@@ -1,6 +1,6 @@
 [package]
 name = "goladder"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jilles Tjoelker <jilles@stack.nl>"]
 edition = "2018"
 
@@ -15,5 +15,9 @@ gorating = { path = "gorating" }
 [dependencies.askama]
 version = "0.8"
 features = ["with-actix-web"]
+
+[dependencies.rust-embed]
+version = "4.3.0"
+features = ["actix"]
 
 [workspace]
