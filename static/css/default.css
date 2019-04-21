@@ -1,7 +1,41 @@
 body {
-	background: rgb(255,255,238);
+	background: #ffe;
 }
 
 h1, h2, h3, h4, h5, h6, th {
 	color: #440;
+}
+
+a {
+	color: #663;
+}
+
+a:visited {
+	color: #633;
+}
+
+a:hover {
+	color: #a11;
+}
+
+a:active {
+	color: #d22;
+}
+
+.currentsection {
+	background-color: #dda;
+}
+
+@media print {
+	body {
+		background: #fff;
+	}
+
+	h1, h2, h3, h4, h5, h6, th {
+		color: #000;
+	}
+
+	nav {
+		display: none;
+	}
 }

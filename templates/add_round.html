@@ -1,17 +1,14 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<link rel="stylesheet" type="text/css" href="static/css/default.css">
-<title>Add a new round</title>
-</head>
+{% extends "base.html" %}
 
-<body>
+{% block head %}
+{% let section = "rounds" %}
+{% endblock %}
+
+{% block body %}
 <h1>Add a new round</h1>
 <form id="addroundform" action="/add_round" method="POST">
 <input type="date" name="date" value="{{defaultdate}}" required pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}">
 <input type="submit" value="Add">
 <a href="..">Cancel</a>
 </form>
-</body>
-</html>
+{% endblock %}

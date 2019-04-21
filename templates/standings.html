@@ -1,12 +1,10 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<link rel="stylesheet" type="text/css" href="static/css/default.css">
-<title>Go ladder - standings</title>
-</head>
+{% extends "base.html" %}
 
-<body>
+{% block head %}
+{% let section = "standings" %}
+{% endblock %}
+
+{% block body %}
 <h1>Go ladder - standings</h1>
 <table border="1">
 <tr><th>Name<th>Rating<th>Score<th>Games
@@ -27,5 +25,4 @@
 <tr><td>Forfeit<td>{{forfeit}}
 {% endif %}
 </table>
-</body>
-</html>
+{% endblock %}

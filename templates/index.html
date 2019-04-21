@@ -1,14 +1,11 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<link rel="stylesheet" type="text/css" href="static/css/default.css">
-<title>Go ladder</title>
-</head>
+{% extends "base.html" %}
 
-<body>
-<h1>Go ladder</h1>
-<p><a href="players">Players</a></p>
+{% block head %}
+{% let section = "rounds" %}
+{% endblock %}
+
+{% block body %}
+<h1>Go ladder - rounds</h1>
 <table border="1">
 <tr><th>Round on
 {% for round in rounds %}
@@ -16,5 +13,4 @@
 {% endfor %}
 <tr><td><a href="/add_round">New</a>
 </table>
-</body>
-</html>
+{% endblock %}

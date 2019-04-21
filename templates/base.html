@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" type="text/css" href="/static/css/default.css">
+{% let section %}
+{% block head %}{% endblock %}
+<title>Go ladder - {{ section }}</title>
+</head>
+
+<body>
+<nav>
+Go ladder |
+<a href="/" class="section {% if section == "rounds" %}currentsection{% endif %}">Rounds</a> |
+<a href="/players" class="section {% if section == "players" %}currentsection{% endif %}">Players</a> |
+<a href="/standings" class="section {% if section == "standings" %}currentsection{% endif %}">Standings</a>
+<br>
+</nav>
+{% block body %}{% endblock %}
+</body>
+</html>
+
