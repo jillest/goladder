@@ -60,26 +60,43 @@ fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpRes
 }
 
 #[derive(Template)]
+#[template(path = "error.html")]
+struct ErrorTemplate {
+    message: String,
+}
+
+fn transform_db_error(error: rusqlite::Error) -> actix_web::Error {
+    let template = ErrorTemplate {
+        message: error.to_string(),
+    };
+    let resp = match template.render() {
+        Ok(html) => HttpResponse::InternalServerError()
+            .content_type("text/html")
+            .body(html),
+        Err(_) => HttpResponse::InternalServerError()
+            .content_type("text/plain")
+            .body("An error occurred, and another error occurred while trying to display it."),
+    };
+    actix_web::error::InternalError::from_response(error, resp).into()
+}
+
+#[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
     rounds: Vec<Round>,
 }
 
-fn index(state: State<AppState>) -> impl Responder {
+fn index(state: State<AppState>) -> rusqlite::Result<impl Responder> {
     let conn = state.dbpool.get().unwrap();
-    let mut stmt = conn
-        .prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")
-        .unwrap();
+    let mut stmt = conn.prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")?;
     let rounds: Vec<Round> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
             let date: String = row.get(1);
             Round { id, date }
-        })
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    IndexTemplate { rounds }
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(IndexTemplate { rounds })
 }
 
 #[derive(Template)]
@@ -90,7 +107,9 @@ struct ScheduleRoundTemplate {
     presences: Vec<RoundPresence>,
 }
 
-fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
+fn schedule_round(
+    (params, state): (Path<(i32,)>, State<AppState>),
+) -> rusqlite::Result<impl Responder> {
     let round_id = params.0;
     let conn = state.dbpool.get().unwrap();
     let round_date = conn
@@ -102,14 +121,13 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
                 date
             },
         )
-        .optional()
-        .unwrap()
+        .optional()?
         .unwrap_or("??".to_owned());
     let round = Round {
         id: round_id,
         date: round_date,
     };
-    let mut stmt = conn.prepare("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = ?1 ORDER BY g.id").unwrap();
+    let mut stmt = conn.prepare("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = ?1 ORDER BY g.id")?;
     let games: Vec<Game> = stmt
         .query_map(&[&round_id], |row| {
             let id: i32 = row.get(0);
@@ -137,10 +155,8 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
                 handicap,
                 result: FormattableGameResult(result),
             }
-        })
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
+        })?
+        .collect::<rusqlite::Result<_>>()?;
     let pairedplayers = {
         let mut pairedplayers = HashSet::with_capacity(2 * games.len());
         for game in &games {
@@ -150,7 +166,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
         pairedplayers
     };
     let mut stmt = conn.prepare("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = ?1",
-        ).unwrap();
+        )?;
     let presences: Vec<RoundPresence> = stmt
         .query_map(&[&round_id], |row| {
             let player_id: i32 = row.get(0);
@@ -169,16 +185,14 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> impl Resp
                     schedule,
                 })
             }
-        })
-        .unwrap()
+        })?
         .filter_map(Result::transpose)
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    ScheduleRoundTemplate {
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ScheduleRoundTemplate {
         round,
         games,
         presences,
-    }
+    })
 }
 
 fn modify_games(
@@ -366,16 +380,14 @@ struct AddRoundTemplate {
     defaultdate: String,
 }
 
-fn add_round(state: State<AppState>) -> impl Responder {
+fn add_round(state: State<AppState>) -> rusqlite::Result<impl Responder> {
     let conn = state.dbpool.get().unwrap();
-    let defaultdate: String = conn
-        .query_row(
-            "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
-            NO_PARAMS,
-            |row| row.get(0),
-        )
-        .unwrap();
-    AddRoundTemplate { defaultdate }
+    let defaultdate: String = conn.query_row(
+        "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
+        NO_PARAMS,
+        |row| row.get(0),
+    )?;
+    Ok(AddRoundTemplate { defaultdate })
 }
 
 fn add_round_run(
@@ -396,22 +408,19 @@ struct PlayersTemplate {
     players: Vec<Player>,
 }
 
-fn players(state: State<AppState>) -> impl Responder {
+fn players(state: State<AppState>) -> rusqlite::Result<impl Responder> {
     let conn = state.dbpool.get().unwrap();
-    let mut stmt = conn
-        .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")
-        .unwrap();
+    let mut stmt =
+        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
     let players: Vec<Player> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
             let name: String = row.get(1);
             let rating: f64 = row.get(2);
             Player { id, name, rating }
-        })
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    PlayersTemplate { players }
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(PlayersTemplate { players })
 }
 
 #[derive(Template)]
@@ -498,47 +507,44 @@ fn add_player_save(
         .finish())
 }
 
-fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> impl Responder {
+fn edit_player(
+    (params, state): (Path<(i32,)>, State<AppState>),
+) -> rusqlite::Result<impl Responder> {
     let player_id = params.0;
     let conn = state.dbpool.get().unwrap();
     let mut stmt = conn
         .prepare(
             "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ORDER BY r.date",
-        )
-        .unwrap();
+        )?;
     let rpresence: Vec<_> = stmt
         .query_map(&[&player_id], |row| PlayerRoundPresence {
             round_id: row.get(0),
             round_date: row.get(1),
             schedule: row.get(2),
-        })
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    let (player, presence) = conn
-        .query_row(
-            "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = ?1",
-            &[&player_id],
-            |row| {
-                let id: i32 = row.get(0);
-                let name: String = row.get(1);
-                let rating: f64 = row.get(2);
-                let default: bool = row.get(3);
-                (
-                    Player { id, name, rating },
-                    PlayerPresence {
-                        default,
-                        rounds: rpresence,
-                    },
-                )
-            },
-        )
-        .unwrap();
-    EditPlayerTemplate {
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let (player, presence) = conn.query_row(
+        "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = ?1",
+        &[&player_id],
+        |row| {
+            let id: i32 = row.get(0);
+            let name: String = row.get(1);
+            let rating: f64 = row.get(2);
+            let default: bool = row.get(3);
+            (
+                Player { id, name, rating },
+                PlayerPresence {
+                    default,
+                    rounds: rpresence,
+                },
+            )
+        },
+    )?;
+    Ok(EditPlayerTemplate {
         is_new: false,
         player,
         presence,
-    }
+    })
 }
 
 fn edit_player_save(
@@ -575,7 +581,7 @@ struct StandingsTemplate {
     forfeit: i64,
 }
 
-fn standings(state: State<AppState>) -> impl Responder {
+fn standings(state: State<AppState>) -> rusqlite::Result<impl Responder> {
     let conn = state.dbpool.get().unwrap();
     let mut stmt = conn
         .prepare(
@@ -585,8 +591,7 @@ fn standings(state: State<AppState>) -> impl Responder {
             "FROM players p ",
             "LEFT OUTER JOIN games g ON (p.id = g.black OR p.id = g.white) AND g.result IS NOT NULL ",
             "GROUP BY p.id ORDER BY p.currentrating DESC, p.id"),
-        )
-        .unwrap();
+        )?;
     let players: Vec<StandingsPlayer> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0);
@@ -605,12 +610,10 @@ fn standings(state: State<AppState>) -> impl Responder {
                 score,
                 games,
             }
-        })
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    let (games, white_wins, black_wins, jigo, forfeit) = conn
-        .query_row(
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    let (games, white_wins, black_wins, jigo, forfeit) =
+        conn.query_row(
             concat!("SELECT COUNT(result), COUNT(result = 'WhiteWins' OR NULL), ",
         "COUNT(result = 'BlackWins' OR NULL), COUNT(result = 'Jigo' OR NULL), ",
         "COUNT(result IN ('WhiteWinsByDefault', 'BlackWinsByDefault', 'BothLose') OR NULL) ",
@@ -624,16 +627,19 @@ fn standings(state: State<AppState>) -> impl Responder {
                 let forfeit: i64 = row.get(4);
                 (games, white_wins, black_wins, jigo, forfeit)
             },
-        )
-        .unwrap();
-    StandingsTemplate {
+        )?;
+    Ok(StandingsTemplate {
         players,
         games,
         white_wins,
         black_wins,
         jigo,
         forfeit,
-    }
+    })
+}
+
+fn handle_error<T, U>(f: impl Fn(T) -> rusqlite::Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
+    move |x| f(x).map_err(transform_db_error)
 }
 
 fn main() {
@@ -646,25 +652,26 @@ fn main() {
         App::with_state(AppState {
             dbpool: dbpool.clone(),
         })
-        .route("/", http::Method::GET, index)
+        .route("/", http::Method::GET, handle_error(index))
         .resource("/schedule/{round}", |r| {
-            r.method(http::Method::GET).with(schedule_round);
+            r.method(http::Method::GET)
+                .with(handle_error(schedule_round));
             r.method(http::Method::POST).with(schedule_round_run)
         })
         .resource("/add_round", |r| {
-            r.method(http::Method::GET).with(add_round);
+            r.method(http::Method::GET).with(handle_error(add_round));
             r.method(http::Method::POST).with(add_round_run)
         })
-        .route("/players", http::Method::GET, players)
+        .route("/players", http::Method::GET, handle_error(players))
         .resource("/add_player", |r| {
             r.method(http::Method::GET).with(add_player);
             r.method(http::Method::POST).with(add_player_save)
         })
         .resource("/player/{id}", |r| {
-            r.method(http::Method::GET).with(edit_player);
+            r.method(http::Method::GET).with(handle_error(edit_player));
             r.method(http::Method::POST).with(edit_player_save)
         })
-        .route("/standings", http::Method::GET, standings)
+        .route("/standings", http::Method::GET, handle_error(standings))
         .resource("/static/{path:.*}", |r| {
             r.method(http::Method::GET).with(static_asset)
         })
