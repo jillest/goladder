@@ -27,6 +27,7 @@ struct AppState {
 enum Error {
     Database(rusqlite::Error),
     DatabasePool(r2d2::Error),
+    BadParam(&'static str),
     ActixWeb(actix_web::Error),
 }
 
@@ -53,6 +54,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::Database(inner) => write!(f, "Database: {}", inner),
             Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
+            Error::BadParam(inner) => write!(f, "Invalid parameter: {}", inner),
             Error::ActixWeb(inner) => write!(f, "{}", inner),
         }
     }
@@ -111,6 +113,10 @@ fn transform_error(error: Error) -> actix_web::Error {
         },
         Error::DatabasePool(ref inner) => ErrorTemplate {
             class: "Database pool",
+            message: inner.to_string(),
+        },
+        Error::BadParam(inner) => ErrorTemplate {
+            class: "Bad parameter",
             message: inner.to_string(),
         },
         Error::ActixWeb(inner) => return inner,
@@ -537,7 +543,8 @@ fn add_player_save(
     (state, params): (State<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let name = &params.0["name"];
-    let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let initialrating =
+        f64::from_str(&params.0["initialrating"]).map_err(|_| Error::BadParam("initialrating"))?;
     let defaultschedule = params.0.get("defaultschedule").is_some();
     let conn = state.dbpool.get()?;
     conn.execute::<&[&dyn ToSql]>(
@@ -594,7 +601,8 @@ fn edit_player_save(
 ) -> Result<HttpResponse> {
     let player_id = pathparams.0;
     let name = &params.0["name"];
-    let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
+    let initialrating =
+        f64::from_str(&params.0["initialrating"]).map_err(|_| Error::BadParam("initialrating"))?;
     let defaultschedule = params.0.get("defaultschedule").is_some();
     let mut conn = state.dbpool.get()?;
     let trans = conn.transaction()?;
