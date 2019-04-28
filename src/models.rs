@@ -45,6 +45,14 @@ pub enum GameResult {
 #[derive(Debug)]
 pub struct BadGameResult;
 
+impl std::fmt::Display for BadGameResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "invalid game result")
+    }
+}
+
+impl std::error::Error for BadGameResult {}
+
 impl FromStr for GameResult {
     type Err = BadGameResult;
 

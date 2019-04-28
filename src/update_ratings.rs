@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use gorating::RatingSystem;
 use rusqlite::types::ToSql;
@@ -25,8 +24,7 @@ pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
         let black: i32 = row.get(1)?;
         let handicap: f64 = row.get(2)?;
         let _boardsize: i16 = row.get(3)?;
-        let result_str: String = row.get(4)?;
-        let result = GameResult::from_str(&result_str).expect("incorrect game result");
+        let result: GameResult = row.get(4)?;
         let wresult = match result {
             GameResult::WhiteWins => 1.0,
             GameResult::BlackWins => 0.0,

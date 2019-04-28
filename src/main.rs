@@ -182,8 +182,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
             let black: String = row.get(5)?;
             let black_rating: f64 = row.get(6)?;
             let handicap: f64 = row.get(7)?;
-            let result_str: Option<String> = row.get(8)?;
-            let result = result_str.map(|s| GameResult::from_str(&s).unwrap());
+            let result: Option<GameResult> = row.get(8)?;
             Ok(Game {
                 id,
                 white: Player {
