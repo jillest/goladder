@@ -23,6 +23,43 @@ struct AppState {
     dbpool: Arc<db::Pool>,
 }
 
+#[derive(Debug)]
+enum Error {
+    Database(rusqlite::Error),
+    DatabasePool(r2d2::Error),
+    ActixWeb(actix_web::Error),
+}
+
+impl From<rusqlite::Error> for Error {
+    fn from(e: rusqlite::Error) -> Self {
+        Error::Database(e)
+    }
+}
+
+impl From<r2d2::Error> for Error {
+    fn from(e: r2d2::Error) -> Self {
+        Error::DatabasePool(e)
+    }
+}
+
+impl From<actix_web::Error> for Error {
+    fn from(e: actix_web::Error) -> Self {
+        Error::ActixWeb(e)
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::Database(inner) => write!(f, "Database: {}", inner),
+            Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
+            Error::ActixWeb(inner) => write!(f, "{}", inner),
+        }
+    }
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(RustEmbed)]
 #[folder = "static/"]
 struct StaticAsset;
@@ -62,12 +99,21 @@ fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpRes
 #[derive(Template)]
 #[template(path = "error.html")]
 struct ErrorTemplate {
+    class: &'static str,
     message: String,
 }
 
-fn transform_db_error(error: rusqlite::Error) -> actix_web::Error {
-    let template = ErrorTemplate {
-        message: error.to_string(),
+fn transform_error(error: Error) -> actix_web::Error {
+    let template = match error {
+        Error::Database(ref inner) => ErrorTemplate {
+            class: "Database",
+            message: inner.to_string(),
+        },
+        Error::DatabasePool(ref inner) => ErrorTemplate {
+            class: "Database pool",
+            message: inner.to_string(),
+        },
+        Error::ActixWeb(inner) => return inner,
     };
     let resp = match template.render() {
         Ok(html) => HttpResponse::InternalServerError()
@@ -86,8 +132,8 @@ struct IndexTemplate {
     rounds: Vec<Round>,
 }
 
-fn index(state: State<AppState>) -> rusqlite::Result<impl Responder> {
-    let conn = state.dbpool.get().unwrap();
+fn index(state: State<AppState>) -> Result<impl Responder> {
+    let conn = state.dbpool.get()?;
     let mut stmt = conn.prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")?;
     let rounds: Vec<Round> = stmt
         .query_map(NO_PARAMS, |row| {
@@ -107,11 +153,9 @@ struct ScheduleRoundTemplate {
     presences: Vec<RoundPresence>,
 }
 
-fn schedule_round(
-    (params, state): (Path<(i32,)>, State<AppState>),
-) -> rusqlite::Result<impl Responder> {
+fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
     let round_id = params.0;
-    let conn = state.dbpool.get().unwrap();
+    let conn = state.dbpool.get()?;
     let round_date = conn
         .query_row(
             "SELECT CAST(date AS TEXT) FROM rounds WHERE id=?1",
@@ -199,7 +243,7 @@ fn modify_games(
     conn: &mut db::Connection,
     round_id: i32,
     game_actions: &[(i32, &str)],
-) -> rusqlite::Result<()> {
+) -> Result<()> {
     if game_actions.len() == 0 {
         return Ok(());
     }
@@ -237,14 +281,11 @@ fn modify_games(
     if ratings_changed {
         update_ratings::update_ratings(&trans)?;
     }
-    trans.commit()
+    trans.commit()?;
+    Ok(())
 }
 
-fn pair_players(
-    conn: &mut db::Connection,
-    round_id: i32,
-    player_ids: &[i32],
-) -> rusqlite::Result<()> {
+fn pair_players(conn: &mut db::Connection, round_id: i32, player_ids: &[i32]) -> Result<()> {
     if player_ids.len() == 0 {
         return Ok(());
     }
@@ -336,12 +377,13 @@ fn pair_players(
             ])?;
         }
     }
-    trans.commit()
+    trans.commit()?;
+    Ok(())
 }
 
 fn schedule_round_run(
     (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
-) -> actix_web::Result<HttpResponse> {
+) -> Result<HttpResponse> {
     let round_id = pathparams.0;
     let mut player_ids: Vec<i32> = params
         .0
@@ -366,9 +408,9 @@ fn schedule_round_run(
             }
         })
         .collect();
-    let mut conn = state.dbpool.get().unwrap();
-    modify_games(&mut conn, round_id, &game_actions).unwrap();
-    pair_players(&mut conn, round_id, &player_ids).unwrap();
+    let mut conn = state.dbpool.get()?;
+    modify_games(&mut conn, round_id, &game_actions)?;
+    pair_players(&mut conn, round_id, &player_ids)?;
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, format!("/schedule/{}", round_id))
         .finish())
@@ -380,8 +422,8 @@ struct AddRoundTemplate {
     defaultdate: String,
 }
 
-fn add_round(state: State<AppState>) -> rusqlite::Result<impl Responder> {
-    let conn = state.dbpool.get().unwrap();
+fn add_round(state: State<AppState>) -> Result<impl Responder> {
+    let conn = state.dbpool.get()?;
     let defaultdate: String = conn.query_row(
         "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
         NO_PARAMS,
@@ -392,11 +434,10 @@ fn add_round(state: State<AppState>) -> rusqlite::Result<impl Responder> {
 
 fn add_round_run(
     (state, params): (State<AppState>, Form<HashMap<String, String>>),
-) -> actix_web::Result<HttpResponse> {
+) -> Result<HttpResponse> {
     let date = &params.0["date"];
-    let conn = state.dbpool.get().unwrap();
-    conn.execute("INSERT INTO rounds (date) VALUES (?1)", &[date])
-        .unwrap();
+    let conn = state.dbpool.get()?;
+    conn.execute("INSERT INTO rounds (date) VALUES (?1)", &[date])?;
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/")
         .finish())
@@ -408,8 +449,8 @@ struct PlayersTemplate {
     players: Vec<Player>,
 }
 
-fn players(state: State<AppState>) -> rusqlite::Result<impl Responder> {
-    let conn = state.dbpool.get().unwrap();
+fn players(state: State<AppState>) -> Result<impl Responder> {
+    let conn = state.dbpool.get()?;
     let mut stmt =
         conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
     let players: Vec<Player> = stmt
@@ -450,7 +491,7 @@ fn update_player_presence(
     trans: &rusqlite::Transaction,
     player_id: i32,
     params: &HashMap<String, String>,
-) -> rusqlite::Result<()> {
+) -> Result<()> {
     for (k, v) in params.iter() {
         if !k.starts_with("schedule") {
             continue;
@@ -492,26 +533,23 @@ fn update_player_presence(
 
 fn add_player_save(
     (state, params): (State<AppState>, Form<HashMap<String, String>>),
-) -> actix_web::Result<HttpResponse> {
+) -> Result<HttpResponse> {
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
     let defaultschedule = params.0.get("defaultschedule").is_some();
-    let conn = state.dbpool.get().unwrap();
+    let conn = state.dbpool.get()?;
     conn.execute::<&[&dyn ToSql]>(
         "INSERT INTO players (name, initialrating, currentrating, defaultschedule) VALUES (?1, ?2, ?2, ?3)",
         &[&name, &initialrating, &defaultschedule],
-    )
-    .unwrap();
+    )?;
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/players")
         .finish())
 }
 
-fn edit_player(
-    (params, state): (Path<(i32,)>, State<AppState>),
-) -> rusqlite::Result<impl Responder> {
+fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
     let player_id = params.0;
-    let conn = state.dbpool.get().unwrap();
+    let conn = state.dbpool.get()?;
     let mut stmt = conn
         .prepare(
             "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ORDER BY r.date",
@@ -549,22 +587,20 @@ fn edit_player(
 
 fn edit_player_save(
     (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
-) -> actix_web::Result<HttpResponse> {
+) -> Result<HttpResponse> {
     let player_id = pathparams.0;
     let name = &params.0["name"];
     let initialrating = f64::from_str(&params.0["initialrating"]).unwrap();
     let defaultschedule = params.0.get("defaultschedule").is_some();
-    let mut conn = state.dbpool.get().unwrap();
-    let trans = conn.transaction().unwrap();
-    trans
-        .execute::<&[&dyn ToSql]>(
-            "UPDATE players SET name = ?1, initialrating = ?2, defaultschedule = ?3 WHERE id = ?4",
-            &[&name, &initialrating, &defaultschedule, &player_id],
-        )
-        .unwrap();
-    update_player_presence(&trans, player_id, &params.0).unwrap();
-    update_ratings::update_ratings(&trans).unwrap();
-    trans.commit().unwrap();
+    let mut conn = state.dbpool.get()?;
+    let trans = conn.transaction()?;
+    trans.execute::<&[&dyn ToSql]>(
+        "UPDATE players SET name = ?1, initialrating = ?2, defaultschedule = ?3 WHERE id = ?4",
+        &[&name, &initialrating, &defaultschedule, &player_id],
+    )?;
+    update_player_presence(&trans, player_id, &params.0)?;
+    update_ratings::update_ratings(&trans)?;
+    trans.commit()?;
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, "/players")
         .finish())
@@ -581,8 +617,8 @@ struct StandingsTemplate {
     forfeit: i64,
 }
 
-fn standings(state: State<AppState>) -> rusqlite::Result<impl Responder> {
-    let conn = state.dbpool.get().unwrap();
+fn standings(state: State<AppState>) -> Result<impl Responder> {
+    let conn = state.dbpool.get()?;
     let mut stmt = conn
         .prepare(
             concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.id), ",
@@ -638,8 +674,8 @@ fn standings(state: State<AppState>) -> rusqlite::Result<impl Responder> {
     })
 }
 
-fn handle_error<T, U>(f: impl Fn(T) -> rusqlite::Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
-    move |x| f(x).map_err(transform_db_error)
+fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
+    move |x| f(x).map_err(transform_error)
 }
 
 fn main() {
@@ -656,20 +692,24 @@ fn main() {
         .resource("/schedule/{round}", |r| {
             r.method(http::Method::GET)
                 .with(handle_error(schedule_round));
-            r.method(http::Method::POST).with(schedule_round_run)
+            r.method(http::Method::POST)
+                .with(handle_error(schedule_round_run))
         })
         .resource("/add_round", |r| {
             r.method(http::Method::GET).with(handle_error(add_round));
-            r.method(http::Method::POST).with(add_round_run)
+            r.method(http::Method::POST)
+                .with(handle_error(add_round_run))
         })
         .route("/players", http::Method::GET, handle_error(players))
         .resource("/add_player", |r| {
             r.method(http::Method::GET).with(add_player);
-            r.method(http::Method::POST).with(add_player_save)
+            r.method(http::Method::POST)
+                .with(handle_error(add_player_save))
         })
         .resource("/player/{id}", |r| {
             r.method(http::Method::GET).with(handle_error(edit_player));
-            r.method(http::Method::POST).with(edit_player_save)
+            r.method(http::Method::POST)
+                .with(handle_error(edit_player_save))
         })
         .route("/standings", http::Method::GET, handle_error(standings))
         .resource("/static/{path:.*}", |r| {

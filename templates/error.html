@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% let section = "error" %}
+{% endblock %}
+
+{% block body %}
+<h1>Error</h1>
+<p>An error occurred with {{class}}: <tt>{{message}}</tt></p>
+<p><a href="javascript:history.back()">Go back</a></p>
+{% endblock %}
