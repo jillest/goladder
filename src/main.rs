@@ -137,9 +137,9 @@ fn index(state: State<AppState>) -> Result<impl Responder> {
     let mut stmt = conn.prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")?;
     let rounds: Vec<Round> = stmt
         .query_map(NO_PARAMS, |row| {
-            let id: i32 = row.get(0);
-            let date: String = row.get(1);
-            Round { id, date }
+            let id: i32 = row.get(0)?;
+            let date: String = row.get(1)?;
+            Ok(Round { id, date })
         })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(IndexTemplate { rounds })
@@ -161,8 +161,8 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
             "SELECT CAST(date AS TEXT) FROM rounds WHERE id=?1",
             &[&round_id],
             |row| {
-                let date: String = row.get(0);
-                date
+                let date: String = row.get(0)?;
+                Ok(date)
             },
         )
         .optional()?
@@ -174,17 +174,17 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
     let mut stmt = conn.prepare("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = ?1 ORDER BY g.id")?;
     let games: Vec<Game> = stmt
         .query_map(&[&round_id], |row| {
-            let id: i32 = row.get(0);
-            let white_id: i32 = row.get(1);
-            let white: String = row.get(2);
-            let white_rating: f64 = row.get(3);
-            let black_id: i32 = row.get(4);
-            let black: String = row.get(5);
-            let black_rating: f64 = row.get(6);
-            let handicap: f64 = row.get(7);
-            let result_str: Option<String> = row.get(8);
+            let id: i32 = row.get(0)?;
+            let white_id: i32 = row.get(1)?;
+            let white: String = row.get(2)?;
+            let white_rating: f64 = row.get(3)?;
+            let black_id: i32 = row.get(4)?;
+            let black: String = row.get(5)?;
+            let black_rating: f64 = row.get(6)?;
+            let handicap: f64 = row.get(7)?;
+            let result_str: Option<String> = row.get(8)?;
             let result = result_str.map(|s| GameResult::from_str(&s).unwrap());
-            Game {
+            Ok(Game {
                 id,
                 white: Player {
                     id: white_id,
@@ -198,7 +198,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
                 },
                 handicap,
                 result: FormattableGameResult(result),
-            }
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     let pairedplayers = {
@@ -213,11 +213,11 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         )?;
     let presences: Vec<RoundPresence> = stmt
         .query_map(&[&round_id], |row| {
-            let player_id: i32 = row.get(0);
-            let name: String = row.get(1);
-            let rating: f64 = row.get(2);
-            let schedule: bool = row.get(3);
-            if !schedule || pairedplayers.contains(&player_id) {
+            let player_id: i32 = row.get(0)?;
+            let name: String = row.get(1)?;
+            let rating: f64 = row.get(2)?;
+            let schedule: bool = row.get(3)?;
+            Ok(if !schedule || pairedplayers.contains(&player_id) {
                 None
             } else {
                 Some(RoundPresence {
@@ -228,7 +228,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
                     },
                     schedule,
                 })
-            }
+            })
         })?
         .filter_map(Result::transpose)
         .collect::<rusqlite::Result<_>>()?;
@@ -299,9 +299,11 @@ fn pair_players(conn: &mut db::Connection, round_id: i32, player_ids: &[i32]) ->
             black: i32,
         }
         let rows: Vec<GameRow> = stmt
-            .query_map(NO_PARAMS, |row| GameRow {
-                white: row.get(0),
-                black: row.get(1),
+            .query_map(NO_PARAMS, |row| {
+                Ok(GameRow {
+                    white: row.get(0)?,
+                    black: row.get(1)?,
+                })
             })?
             .collect::<rusqlite::Result<_>>()?;
         for row in &rows {
@@ -328,8 +330,9 @@ fn pair_players(conn: &mut db::Connection, round_id: i32, player_ids: &[i32]) ->
         let mut stmt = trans.prepare("SELECT id, currentrating FROM players ORDER BY id")?;
         ratings = stmt
             .query_map(NO_PARAMS, |row| {
-                let id: i32 = row.get(0);
-                player_ids.binary_search(&id).ok().map(|_| row.get(1))
+                let id: i32 = row.get(0)?;
+                let rating: f64 = row.get(1)?;
+                Ok(player_ids.binary_search(&id).ok().map(|_| rating))
             })?
             .filter_map(Result::transpose)
             .collect::<rusqlite::Result<_>>()?;
@@ -455,10 +458,10 @@ fn players(state: State<AppState>) -> Result<impl Responder> {
         conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
     let players: Vec<Player> = stmt
         .query_map(NO_PARAMS, |row| {
-            let id: i32 = row.get(0);
-            let name: String = row.get(1);
-            let rating: f64 = row.get(2);
-            Player { id, name, rating }
+            let id: i32 = row.get(0)?;
+            let name: String = row.get(1)?;
+            let rating: f64 = row.get(2)?;
+            Ok(Player { id, name, rating })
         })?
         .collect::<rusqlite::Result<_>>()?;
     Ok(PlayersTemplate { players })
@@ -555,27 +558,29 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl 
             "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ORDER BY r.date",
         )?;
     let rpresence: Vec<_> = stmt
-        .query_map(&[&player_id], |row| PlayerRoundPresence {
-            round_id: row.get(0),
-            round_date: row.get(1),
-            schedule: row.get(2),
+        .query_map(&[&player_id], |row| {
+            Ok(PlayerRoundPresence {
+                round_id: row.get(0)?,
+                round_date: row.get(1)?,
+                schedule: row.get(2)?,
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     let (player, presence) = conn.query_row(
         "SELECT id, name, initialrating, defaultschedule FROM players WHERE id = ?1",
         &[&player_id],
         |row| {
-            let id: i32 = row.get(0);
-            let name: String = row.get(1);
-            let rating: f64 = row.get(2);
-            let default: bool = row.get(3);
-            (
+            let id: i32 = row.get(0)?;
+            let name: String = row.get(1)?;
+            let rating: f64 = row.get(2)?;
+            let default: bool = row.get(3)?;
+            Ok((
                 Player { id, name, rating },
                 PlayerPresence {
                     default,
                     rounds: rpresence,
                 },
-            )
+            ))
         },
     )?;
     Ok(EditPlayerTemplate {
@@ -630,22 +635,22 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
         )?;
     let players: Vec<StandingsPlayer> = stmt
         .query_map(NO_PARAMS, |row| {
-            let id: i32 = row.get(0);
-            let name: String = row.get(1);
-            let initialrating: f64 = row.get(2);
-            let currentrating: f64 = row.get(3);
-            let games: i64 = row.get(4);
-            let wins: i64 = row.get(5);
-            let jigos: i64 = row.get(6);
+            let id: i32 = row.get(0)?;
+            let name: String = row.get(1)?;
+            let initialrating: f64 = row.get(2)?;
+            let currentrating: f64 = row.get(3)?;
+            let games: i64 = row.get(4)?;
+            let wins: i64 = row.get(5)?;
+            let jigos: i64 = row.get(6)?;
             let score = wins as f64 + 0.5 * jigos as f64;
-            StandingsPlayer {
+            Ok(StandingsPlayer {
                 id,
                 name,
                 initialrating,
                 currentrating,
                 score,
                 games,
-            }
+            })
         })?
         .collect::<rusqlite::Result<_>>()?;
     let (games, white_wins, black_wins, jigo, forfeit) =
@@ -656,12 +661,12 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
         "FROM games"),
             NO_PARAMS,
             |row| {
-                let games: i64 = row.get(0);
-                let white_wins: i64 = row.get(1);
-                let black_wins: i64 = row.get(2);
-                let jigo: i64 = row.get(3);
-                let forfeit: i64 = row.get(4);
-                (games, white_wins, black_wins, jigo, forfeit)
+                let games: i64 = row.get(0)?;
+                let white_wins: i64 = row.get(1)?;
+                let black_wins: i64 = row.get(2)?;
+                let jigo: i64 = row.get(3)?;
+                let forfeit: i64 = row.get(4)?;
+                Ok((games, white_wins, black_wins, jigo, forfeit))
             },
         )?;
     Ok(StandingsTemplate {
