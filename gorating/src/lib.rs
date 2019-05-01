@@ -1,6 +1,8 @@
 pub struct RatingSystem {
     pub epsilon: f64,
     pub min_rating: f64,
+    /// Maximum rating points that a player can lose in one tournament
+    pub max_drop: f64,
 }
 
 impl RatingSystem {
@@ -8,6 +10,7 @@ impl RatingSystem {
         Self {
             epsilon: 0.016,
             min_rating: -900.0,
+            max_drop: 100.0,
         }
     }
 
@@ -121,6 +124,7 @@ mod test {
         let sys = RatingSystem {
             epsilon: 0.0,
             min_rating: 100.0,
+            max_drop: 100.0,
         };
         assert_eq!(sys.rating_adjustment(2400.0, 2400.0, 0.0, 1.0), 7.5);
         assert_eq!(sys.rating_adjustment(2400.0, 2400.0, 0.0, 0.0), -7.5);
@@ -131,6 +135,7 @@ mod test {
         let sys = RatingSystem {
             epsilon: 0.0,
             min_rating: 100.0,
+            max_drop: 100.0,
         };
         assert_eq!(sys.rating_adjustment(320.0, 400.0, 0.0, 1.0).round(), 63.0);
         assert_eq!(sys.rating_adjustment(400.0, 320.0, 0.0, 0.0).round(), -60.0);
@@ -141,6 +146,7 @@ mod test {
         let sys = RatingSystem {
             epsilon: 0.0,
             min_rating: 100.0,
+            max_drop: 100.0,
         };
         assert_eq!(
             sys.rating_adjustment(1850.0, 2400.0, 5.0, 1.0).round(),

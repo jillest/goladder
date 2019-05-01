@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use gorating::RatingSystem;
@@ -9,15 +10,40 @@ use crate::models::GameResult;
 pub static RATINGS: RatingSystem = RatingSystem {
     epsilon: 0.016,
     min_rating: -400.0,
+    max_drop: 100.0,
 };
+
+struct PendingRating {
+    rating: f64,
+    pending: Cell<f64>,
+}
+
+impl PendingRating {
+    fn new(rating: f64) -> Self {
+        PendingRating {
+            rating,
+            pending: Cell::new(0.0),
+        }
+    }
+}
+
+fn apply_pending_changes(ratings: &mut HashMap<i32, PendingRating>) {
+    for pr in ratings.values_mut() {
+        let adj = f64::max(pr.pending.replace(0.0), -RATINGS.max_drop);
+        pr.rating = f64::max(pr.rating + adj, RATINGS.min_rating);
+    }
+}
 
 pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
     let mut stmt = trans.prepare("SELECT id, initialrating FROM players")?;
-    let mut ratings: HashMap<i32, f64> = stmt
-        .query_map(NO_PARAMS, |row| Ok((row.get(0)?, row.get(1)?)))?
+    let mut ratings: HashMap<i32, PendingRating> = stmt
+        .query_map(NO_PARAMS, |row| {
+            Ok((row.get(0)?, PendingRating::new(row.get(1)?)))
+        })?
         .collect::<rusqlite::Result<_>>()?;
+    let mut last_round = None;
     let mut stmt = trans.prepare(
-        "SELECT g.white, g.black, g.handicap, g.boardsize, g.result FROM games g, rounds r WHERE g.played = r.id AND g.result IS NOT NULL ORDER BY r.date"
+        "SELECT g.white, g.black, g.handicap, g.boardsize, g.result, r.id FROM games g, rounds r WHERE g.played = r.id AND g.result IS NOT NULL ORDER BY r.date"
     )?;
     stmt.query_map(NO_PARAMS, |row| {
         let white: i32 = row.get(0)?;
@@ -25,6 +51,11 @@ pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
         let handicap: f64 = row.get(2)?;
         let _boardsize: i16 = row.get(3)?;
         let result: GameResult = row.get(4)?;
+        let round: i32 = row.get(5)?;
+        if Some(round) != last_round {
+            last_round = Some(round);
+            apply_pending_changes(&mut ratings);
+        }
         let wresult = match result {
             GameResult::WhiteWins => 1.0,
             GameResult::BlackWins => 0.0,
@@ -32,18 +63,19 @@ pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
             _ => return Ok(()),
         };
         let bresult = 1.0 - wresult;
-        let wadj = RATINGS.rating_adjustment(ratings[&white], ratings[&black], -handicap, wresult);
-        let badj = RATINGS.rating_adjustment(ratings[&black], ratings[&white], handicap, bresult);
-        let wr = ratings.get_mut(&white).expect("game's player not found");
-        *wr = f64::max(*wr + wadj, RATINGS.min_rating);
-        let br = ratings.get_mut(&black).expect("game's player not found");
-        *br = f64::max(*br + badj, RATINGS.min_rating);
+        let wpr = &ratings[&white];
+        let bpr = &ratings[&black];
+        let wadj = RATINGS.rating_adjustment(wpr.rating, bpr.rating, -handicap, wresult);
+        let badj = RATINGS.rating_adjustment(bpr.rating, wpr.rating, handicap, bresult);
+        wpr.pending.set(wpr.pending.get() + wadj);
+        bpr.pending.set(bpr.pending.get() + badj);
         Ok(())
     })?
     .collect::<rusqlite::Result<()>>()?;
+    apply_pending_changes(&mut ratings);
     let mut statement = trans.prepare("UPDATE players SET currentrating = ?2 WHERE id = ?1")?;
     for (id, rating) in ratings.iter() {
-        statement.execute::<&[&dyn ToSql]>(&[&id, &rating])?;
+        statement.execute::<&[&dyn ToSql]>(&[&id, &rating.rating])?;
     }
     Ok(())
 }
