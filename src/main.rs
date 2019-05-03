@@ -516,22 +516,28 @@ fn update_player_presence(
                 )?;
             }
             "true" => {
-                trans.execute::<&[&dyn ToSql]>(
-                    concat!(
-                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3) ",
-                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = ?3"
-                    ),
+                if trans.execute::<&[&dyn ToSql]>(
+                    "UPDATE presence SET schedule = ?3 WHERE player = ?1 AND \"when\" = ?2",
                     &[&player_id, &round_id, &true],
-                )?;
+                )? == 0
+                {
+                    trans.execute::<&[&dyn ToSql]>(
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3)",
+                        &[&player_id, &round_id, &true],
+                    )?;
+                }
             }
             "false" => {
-                trans.execute::<&[&dyn ToSql]>(
-                    concat!(
-                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3) ",
-                        "ON CONFLICT (player, \"when\") DO UPDATE SET schedule = ?3"
-                    ),
+                if trans.execute::<&[&dyn ToSql]>(
+                    "UPDATE presence SET schedule = ?3 WHERE player = ?1 AND \"when\" = ?2",
                     &[&player_id, &round_id, &false],
-                )?;
+                )? == 0
+                {
+                    trans.execute::<&[&dyn ToSql]>(
+                        "INSERT INTO presence (player, \"when\", schedule) VALUES (?1, ?2, ?3)",
+                        &[&player_id, &round_id, &false],
+                    )?;
+                }
             }
             _ => eprintln!("bad presence update \"{}\"", v),
         }
