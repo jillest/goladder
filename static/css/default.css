@@ -39,3 +39,11 @@ a:active {
 		display: none;
 	}
 }
+
+html {
+  font-size: 12px; /* px means "pixels": the base font size is now 10 pixels high  */
+  font-family: "Open Sans", sans-serif; 
+}
+
+table.zebra { text-align: left; }
+.zebra tr:nth-child(even) { background: #dda; }
