@@ -1293,11 +1293,3 @@ pub fn weightedmatch(costs: Vec<Vec<Weight>>, minimize_weight: bool) -> Vec<Edge
     let mut m = WeightedMatch::new(costs);
     m.weighted_match(minimize_weight)
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
