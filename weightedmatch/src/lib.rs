@@ -1281,14 +1281,6 @@ impl WeightedMatch {
             }
         }
     }
-
-    fn getMatched(mates: Vec<Edge>) -> Vec<Edge> {
-        /* WeightedMatch.weightedMatch returns mates, indexed and valued
-         * 1, ..., V. Shift the index to 0, ... , V-1 and put the values in
-         * this range too (i.e., decrement them).
-         */
-        mates.into_iter().skip(1).map(|e| e - 1).collect()
-    }
 }
 
 pub fn weightedmatch(costs: Vec<Vec<Weight>>, minimize_weight: bool) -> Vec<Edge> {
