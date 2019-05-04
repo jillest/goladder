@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <link rel="stylesheet" type="text/css" href="../static/css/default.css">
-<title>Scheduling round {{round.id}} on {{round.date}}</title>
+<title>Scheduling round on {{round.date}}</title>
 <style type="text/css">
 .clickableText {
 	cursor: default;
@@ -40,7 +40,7 @@ window.addEventListener('load', function() {
 </head>
 
 <body>
-<h1>Scheduling round {{round.id}} on {{round.date}}</h1>
+<h1>Scheduling round on {{round.date}}</h1>
 <form id="pairform" action="/schedule/{{round.id}}" method="POST">
 <h2>Scheduled games</h2>
 {% if games.len() != 0 %}
