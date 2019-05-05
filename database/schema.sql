@@ -12,7 +12,7 @@ CREATE TABLE players (
 );
 CREATE TABLE rounds (
 	id INTEGER PRIMARY KEY,
-	"date" DATE NOT NULL,
+	"date" DATE UNIQUE NOT NULL,
 	extra JSONB
 );
 CREATE TABLE presence (
