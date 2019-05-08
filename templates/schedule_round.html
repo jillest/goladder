@@ -25,7 +25,13 @@ function verifyEven(form) {
 		if (elems[i].checked)
 			n++;
 	var submit = form.querySelector('input[type="submit"]');
-	submit.disabled = (n & 1) != 0;
+	if ((n & 1) != 0) {
+		submit.title = 'Cannot schedule an odd number of players.';
+		submit.disabled = true;
+	} else {
+		submit.title = '';
+		submit.disabled = false;
+	}
 }
 
 function setGame(id, value) {
