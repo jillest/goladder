@@ -87,9 +87,39 @@ window.addEventListener('load', function() {
 {% else %}
 <p>Nobody to pair.</p>
 {% endif %}
-{% if games.len() != 0 || presences.len() != 0 %}
+<h2>Custom game</h2>
+<table class="zebra">
+  <tr><th>White<th>Black<th>Handicap<th>Result
+  <tr>
+    <td>
+      <select name="customwhite">
+        <option value="">-- Select player for white --</option>
+        {% for player in all_players %}
+        <option value="{{ player.id }}">{{ player.name }}</option>
+        {% endfor %}
+      </select>
+    <td>
+      <select name="customblack">
+        <option value="">-- Select player for black --</option>
+        {% for player in all_players %}
+        <option value="{{ player.id }}">{{ player.name }}</option>
+        {% endfor %}
+      </select>
+    <td>
+      <input name="customhandicap" placeholder="standard">
+    <td>
+      <select name="customresult">
+        <option value="None">Not known yet</option>
+        <option value="BlackWins">Black wins</option>
+        <option value="WhiteWins">White wins</option>
+        <option value="Jigo">Jigo</option>
+        <option value="BlackWinsByDefault">White forfeits</option>
+        <option value="WhiteWinsByDefault">Black forfeits</option>
+        <option value="BothLose">Both forfeit</option>
+      </select>
+</table>
+<br>
 <input type="submit" value="Apply changes">
-{% endif %}
 <a href="..">Cancel</a>
 </form>
 </body>

@@ -28,6 +28,7 @@ enum Error {
     Database(rusqlite::Error),
     DatabasePool(r2d2::Error),
     BadParam(&'static str),
+    Inconsistency(&'static str),
     ActixWeb(actix_web::Error),
 }
 
@@ -55,6 +56,7 @@ impl std::fmt::Display for Error {
             Error::Database(inner) => write!(f, "Database: {}", inner),
             Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
             Error::BadParam(inner) => write!(f, "Invalid parameter: {}", inner),
+            Error::Inconsistency(inner) => write!(f, "Inconsistency: {}", inner),
             Error::ActixWeb(inner) => write!(f, "{}", inner),
         }
     }
@@ -119,6 +121,10 @@ fn transform_error(error: Error) -> actix_web::Error {
             class: "Bad parameter",
             message: inner.to_string(),
         },
+        Error::Inconsistency(inner) => ErrorTemplate {
+            class: "Inconsistency",
+            message: inner.to_string(),
+        },
         Error::ActixWeb(inner) => return inner,
     };
     let resp = match template.render() {
@@ -157,6 +163,7 @@ struct ScheduleRoundTemplate {
     round: Round,
     games: Vec<Game>,
     presences: Vec<RoundPresence>,
+    all_players: Vec<Player>,
 }
 
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
@@ -237,30 +244,44 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         })?
         .filter_map(Result::transpose)
         .collect::<rusqlite::Result<_>>()?;
+    let mut stmt =
+        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
+    let all_players: Vec<Player> = stmt
+        .query_map(NO_PARAMS, |row| {
+            let player_id: i32 = row.get(0)?;
+            let name: String = row.get(1)?;
+            let rating: f64 = row.get(2)?;
+            Ok(Player {
+                id: player_id,
+                name,
+                rating,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?;
     Ok(ScheduleRoundTemplate {
         round,
         games,
         presences,
+        all_players,
     })
 }
 
 fn modify_games(
-    conn: &mut db::Connection,
+    trans: &rusqlite::Transaction,
     round_id: i32,
     game_actions: &[(i32, &str)],
+    ratings_changed: &mut bool,
 ) -> Result<()> {
     if game_actions.len() == 0 {
         return Ok(());
     }
-    let trans = conn.transaction()?;
-    let mut ratings_changed = false;
     let mut d_stmt = trans.prepare("DELETE FROM games WHERE played = ?1 AND id = ?2")?;
     let mut u_stmt = trans.prepare("UPDATE games SET result = ?1 WHERE played = ?2 AND id = ?3")?;
     for &(id, action) in game_actions {
         let result: Option<&str> = match action {
             "delete" => {
                 if d_stmt.execute(&[round_id, id])? > 0 {
-                    ratings_changed = true;
+                    *ratings_changed = true;
                 }
                 continue;
             }
@@ -278,25 +299,18 @@ fn modify_games(
         }
         .map(GameResult::to_str);
         if u_stmt.execute::<&[&dyn ToSql]>(&[&result, &round_id, &id])? > 0 {
-            ratings_changed = true;
+            *ratings_changed = true;
         }
     }
-    drop(u_stmt);
-    drop(d_stmt);
-    if ratings_changed {
-        update_ratings::update_ratings(&trans)?;
-    }
-    trans.commit()?;
     Ok(())
 }
 
-fn pair_players(conn: &mut db::Connection, round_id: i32, player_ids: &[i32]) -> Result<()> {
+fn pair_players(trans: &rusqlite::Transaction, round_id: i32, player_ids: &[i32]) -> Result<()> {
     if player_ids.len() == 0 {
         return Ok(());
     }
     let mut played = vec![0; player_ids.len()];
     let mut weights = vec![vec![0; player_ids.len()]; player_ids.len()];
-    let trans = conn.transaction()?;
     {
         let mut stmt = trans.prepare("SELECT g.white, g.black FROM games g, rounds r WHERE g.played = r.id AND g.result IS NOT NULL ORDER BY r.date DESC, r.id DESC")?;
         struct GameRow {
@@ -385,7 +399,105 @@ fn pair_players(conn: &mut db::Connection, round_id: i32, player_ids: &[i32]) ->
             ])?;
         }
     }
-    trans.commit()?;
+    Ok(())
+}
+
+struct CustomGame {
+    white: i32,
+    black: i32,
+    handicap: Option<f64>,
+    result: Option<GameResult>,
+}
+
+fn parse_custom_game(params: &HashMap<String, String>) -> Result<Option<CustomGame>> {
+    let white = match params.get("customwhite") {
+        Some(id) => {
+            if id == "" {
+                return Ok(None);
+            }
+            i32::from_str(id).map_err(|_| Error::BadParam("customwhite"))?
+        }
+        None => return Ok(None),
+    };
+    let black = match params.get("customblack") {
+        Some(id) => {
+            if id == "" {
+                return Ok(None);
+            }
+            i32::from_str(id).map_err(|_| Error::BadParam("customblack"))?
+        }
+        None => return Ok(None),
+    };
+    if white == black {
+        return Err(Error::BadParam("Game against self"));
+    }
+    let handicap = match params.get("customhandicap") {
+        Some(s) => {
+            if s == "" {
+                None
+            } else {
+                Some(f64::from_str(s).map_err(|_| Error::BadParam("customhandicap"))?)
+            }
+        }
+        None => None,
+    };
+    let result_str = match params.get("customresult") {
+        Some(s) => s,
+        None => "None",
+    };
+    let result = if result_str == "None" {
+        None
+    } else {
+        Some(GameResult::from_str(result_str).map_err(|_| Error::BadParam("customresult"))?)
+    };
+    Ok(Some(CustomGame {
+        white,
+        black,
+        handicap,
+        result,
+    }))
+}
+
+fn add_custom_game(
+    trans: &rusqlite::Transaction,
+    round_id: i32,
+    game: &CustomGame,
+    ratings_changed: &mut bool,
+) -> Result<()> {
+    let handicap = match game.handicap {
+        Some(h) => h,
+        None => {
+            let mut stmt =
+                trans.prepare("SELECT id, currentrating FROM players WHERE id = ?1 OR id = ?2")?;
+            let mut white_rating = None;
+            let mut black_rating = None;
+            stmt.query_map(&[game.white, game.black], |row| {
+                let id: i32 = row.get(0)?;
+                let rating: f64 = row.get(1)?;
+                if id == game.white {
+                    white_rating = Some(rating);
+                } else if id == game.black {
+                    black_rating = Some(rating);
+                }
+                Ok(())
+            })?
+            .collect::<rusqlite::Result<()>>()?;
+            match (white_rating, black_rating) {
+                (Some(w), Some(b)) => {
+                    update_ratings::RATINGS.calculate_handicap(f64::max(w - b, 0.0))
+                }
+                _ => return Err(Error::Inconsistency("one or both players not found")),
+            }
+        }
+    };
+    let result = game.result.map(GameResult::to_str);
+    trans.execute::<&[&dyn ToSql]>(
+        "INSERT INTO games (played, white, black, handicap, result) VALUES (?1, ?2, ?3, ?4, ?5)",
+        &[&round_id, &game.white, &game.black, &handicap, &result],
+    )?;
+    if game.result.is_some() {
+        *ratings_changed = true;
+    }
     Ok(())
 }
 
@@ -416,9 +528,19 @@ fn schedule_round_run(
             }
         })
         .collect();
+    let opt_custom_game = parse_custom_game(&params.0)?;
     let mut conn = state.dbpool.get()?;
-    modify_games(&mut conn, round_id, &game_actions)?;
-    pair_players(&mut conn, round_id, &player_ids)?;
+    let trans = conn.transaction()?;
+    let mut ratings_changed = false;
+    modify_games(&trans, round_id, &game_actions, &mut ratings_changed)?;
+    pair_players(&trans, round_id, &player_ids)?;
+    if let Some(custom_game) = opt_custom_game {
+        add_custom_game(&trans, round_id, &custom_game, &mut ratings_changed)?;
+    }
+    if ratings_changed {
+        update_ratings::update_ratings(&trans)?;
+    }
+    trans.commit()?;
     Ok(HttpResponse::Found()
         .header(http::header::LOCATION, format!("/schedule/{}", round_id))
         .finish())
