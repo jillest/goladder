@@ -245,7 +245,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         .filter_map(Result::transpose)
         .collect::<rusqlite::Result<_>>()?;
     let mut stmt =
-        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
+        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
     let all_players: Vec<Player> = stmt
         .query_map(NO_PARAMS, |row| {
             let player_id: i32 = row.get(0)?;
@@ -582,7 +582,7 @@ struct PlayersTemplate {
 fn players(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let mut stmt =
-        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC")?;
+        conn.prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
     let players: Vec<Player> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
