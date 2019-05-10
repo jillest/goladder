@@ -123,11 +123,25 @@ pub struct RoundPresence {
 
 pub struct StandingsPlayer {
     pub id: i32,
+    pub original_index: usize,
     pub name: String,
     pub initialrating: f64,
     pub currentrating: f64,
     pub score: f64,
     pub games: i64,
+}
+
+pub struct PlaceDiff(isize);
+
+impl std::fmt::Display for PlaceDiff {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}{}",
+            if self.0 < 0 { '−' } else { '+' },
+            self.0.abs()
+        )
+    }
 }
 
 pub struct RatingDiff(f64);
@@ -144,6 +158,10 @@ impl std::fmt::Display for RatingDiff {
 }
 
 impl StandingsPlayer {
+    pub fn place_diff(&self, index: usize) -> PlaceDiff {
+        PlaceDiff(index as isize - self.original_index as isize)
+    }
+
     pub fn rating_diff(&self) -> RatingDiff {
         RatingDiff(self.currentrating - self.initialrating)
     }
@@ -157,6 +175,7 @@ mod test {
     fn test_rating_diff_1() {
         let p = StandingsPlayer {
             id: 1,
+            original_index: 1,
             name: "Dummy".into(),
             initialrating: 1000.0,
             currentrating: 1100.3,
@@ -170,6 +189,7 @@ mod test {
     fn test_rating_diff_2() {
         let p = StandingsPlayer {
             id: 1,
+            original_index: 1,
             name: "Dummy".into(),
             initialrating: 1001.0,
             currentrating: 990.0,
@@ -183,6 +203,7 @@ mod test {
     fn test_rating_diff_3() {
         let p = StandingsPlayer {
             id: 1,
+            original_index: 1,
             name: "Dummy".into(),
             initialrating: 1001.0,
             currentrating: 1000.6,

@@ -7,9 +7,10 @@
 {% block body %}
 <h1>Go ladder - standings</h1>
 <table border="1">
-<tr><th>Name<th>Rating<th>Score<th>Games
+<tr><th>Place<th>Name<th>Rating<th>Score<th>Games
 {% for player in players %}
-<tr><td>{{player.name}}
+<tr><td>{{loop.index}} ({{player.place_diff(loop.index)}})
+<td>{{player.name}}
 <td>{{player.currentrating.round()}} ({{player.rating_diff()}})
 <td>{{player.score}}
 <td>{{player.games}}

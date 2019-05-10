@@ -759,6 +759,15 @@ struct StandingsTemplate {
 
 fn standings(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
+    let mut stmt = conn.prepare("SELECT id FROM players ORDER BY initialrating DESC, id")?;
+    let original_indices: HashMap<i32, usize> = stmt
+        .query_map(NO_PARAMS, |row| {
+            let id: i32 = row.get(0)?;
+            Ok(id)
+        })?
+        .enumerate()
+        .map(|(idx, res_id)| Ok((res_id?, idx + 1)))
+        .collect::<rusqlite::Result<_>>()?;
     let mut stmt = conn
         .prepare(
             concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.id), ",
@@ -780,6 +789,7 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
             let score = wins as f64 + 0.5 * jigos as f64;
             Ok(StandingsPlayer {
                 id,
+                original_index: original_indices[&id],
                 name,
                 initialrating,
                 currentrating,
