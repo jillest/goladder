@@ -8,11 +8,22 @@ use rusqlite::types::{FromSql, FromSqlError, ValueRef};
 use crate::models::GameResult;
 
 pub type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
-pub type Connection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
-pub fn create_pool(path: &OsStr) -> Pool {
+pub fn create_pool(path: &OsStr) -> Result<Pool, r2d2::Error> {
     let manager = SqliteConnectionManager::file(path);
-    Pool::builder().max_size(1).build(manager).unwrap()
+    Pool::builder().max_size(1).build(manager)
+}
+
+static SCHEMA: &str = include_str!("../database/schema.sql");
+
+pub fn ensure_schema(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    match conn.prepare("SELECT white, black FROM games ORDER BY id") {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            eprintln!("note: initializing database");
+            conn.execute_batch(SCHEMA)
+        }
+    }
 }
 
 impl FromSql for GameResult {
@@ -25,6 +36,7 @@ impl FromSql for GameResult {
 mod tests {
     use crate::models::GameResult;
     use rusqlite::types::{FromSql, ValueRef};
+    use super::*;
 
     #[test]
     fn game_result_from_sql_ok() {
@@ -45,5 +57,11 @@ mod tests {
         let val = ValueRef::Integer(3);
         let r: Result<GameResult, _> = FromSql::column_result(val);
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn initialize_database() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
     }
 }

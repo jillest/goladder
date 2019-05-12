@@ -831,12 +831,16 @@ fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Re
     move |x| f(x).map_err(transform_error)
 }
 
-fn main() {
+fn main() -> Result<()> {
     let dbpath = std::env::args_os().nth(1).unwrap_or_else(|| {
         eprintln!("Need a database pathname such as \"goladder.db\"");
         std::process::exit(2);
     });
-    let dbpool = Arc::new(db::create_pool(&dbpath));
+    let dbpool = Arc::new(db::create_pool(&dbpath)?);
+    {
+        let conn = dbpool.get()?;
+        db::ensure_schema(&conn)?;
+    }
     server::new(move || {
         App::with_state(AppState {
             dbpool: dbpool.clone(),
@@ -872,4 +876,5 @@ fn main() {
     .bind("127.0.0.1:8080")
     .unwrap()
     .run();
+    Ok(())
 }

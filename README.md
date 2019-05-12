@@ -21,11 +21,10 @@ Requirements
 Installation
 ------------
 
-* Create an SQLite3 database.
-* Create the necessary tables and types by running `database/schema.sql`
-  (for example `sqlite3 goladder.db <database/schema.sql`).
 * Compile and run the application using `cargo run --release` followed
   by the database pathname.
+  If the database file does not exist yet, it will be created and
+  initialized automatically.
   By omitting `--release` one can create a debug build, which compiles much
   faster but runs slower.
 * Go to http://127.0.0.1:8080/ in a Web browser (this is currently
