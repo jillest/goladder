@@ -749,6 +749,7 @@ fn edit_player_save(
 #[derive(Template)]
 #[template(path = "standings.html")]
 struct StandingsTemplate {
+    today: String,
     players: Vec<StandingsPlayer>,
     games: i64,
     white_wins: i64,
@@ -759,6 +760,7 @@ struct StandingsTemplate {
 
 fn standings(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
+    let today = time::now().strftime("%Y-%m-%d").unwrap().to_string();
     let mut stmt = conn.prepare("SELECT id FROM players ORDER BY initialrating DESC, id")?;
     let original_indices: HashMap<i32, usize> = stmt
         .query_map(NO_PARAMS, |row| {
@@ -815,6 +817,7 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
             },
         )?;
     Ok(StandingsTemplate {
+        today,
         players,
         games,
         white_wins,
