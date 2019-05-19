@@ -34,9 +34,9 @@ impl FromSql for GameResult {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::models::GameResult;
     use rusqlite::types::{FromSql, ValueRef};
-    use super::*;
 
     #[test]
     fn game_result_from_sql_ok() {
