@@ -26,6 +26,10 @@ a:active {
 	background-color: #dda;
 }
 
+.bottomMargin {
+	margin-bottom: 1em;
+}
+
 @media print {
 	body {
 		background: #fff;
@@ -36,6 +40,10 @@ a:active {
 	}
 
 	nav {
+		display: none;
+	}
+
+	.screenOnly {
 		display: none;
 	}
 }

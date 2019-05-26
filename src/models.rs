@@ -42,6 +42,15 @@ pub enum GameResult {
     BothLose,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum OneSidedGameResult {
+    Win,
+    Lose,
+    Jigo,
+    WinByDefault,
+    LoseByDefault,
+}
+
 #[derive(Debug)]
 pub struct BadGameResult;
 
@@ -80,6 +89,28 @@ impl GameResult {
             GameResult::BothLose => "BothLose",
         }
     }
+
+    pub fn seen_from_white(self) -> OneSidedGameResult {
+        match self {
+            GameResult::WhiteWins => OneSidedGameResult::Win,
+            GameResult::BlackWins => OneSidedGameResult::Lose,
+            GameResult::Jigo => OneSidedGameResult::Jigo,
+            GameResult::WhiteWinsByDefault => OneSidedGameResult::WinByDefault,
+            GameResult::BlackWinsByDefault => OneSidedGameResult::LoseByDefault,
+            GameResult::BothLose => OneSidedGameResult::LoseByDefault,
+        }
+    }
+
+    pub fn seen_from_black(self) -> OneSidedGameResult {
+        match self {
+            GameResult::WhiteWins => OneSidedGameResult::Lose,
+            GameResult::BlackWins => OneSidedGameResult::Win,
+            GameResult::Jigo => OneSidedGameResult::Jigo,
+            GameResult::WhiteWinsByDefault => OneSidedGameResult::LoseByDefault,
+            GameResult::BlackWinsByDefault => OneSidedGameResult::WinByDefault,
+            GameResult::BothLose => OneSidedGameResult::LoseByDefault,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -100,6 +131,19 @@ impl std::fmt::Display for FormattableGameResult {
     }
 }
 
+impl std::fmt::Display for OneSidedGameResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = match self {
+            OneSidedGameResult::Win => "+",
+            OneSidedGameResult::Lose => "−",
+            OneSidedGameResult::Jigo => "=",
+            OneSidedGameResult::WinByDefault => "+!",
+            OneSidedGameResult::LoseByDefault => "−!",
+        };
+        write!(formatter, "{}", s)
+    }
+}
+
 #[derive(Debug)]
 pub struct Game {
     pub id: i32,
@@ -107,6 +151,43 @@ pub struct Game {
     pub black: Player,
     pub handicap: f64,
     pub result: FormattableGameResult,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Colour {
+    Black,
+    White,
+}
+
+impl Colour {
+    fn letter(self) -> char {
+        match self {
+            Colour::Black => 'b',
+            Colour::White => 'w',
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OneSidedGame {
+    pub id: i32,
+    pub colour: Colour,
+    pub other_place: usize,
+    pub handicap: f64,
+    pub result: OneSidedGameResult,
+}
+
+impl std::fmt::Display for OneSidedGame {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}/{}{}{}",
+            self.other_place,
+            self.colour.letter(),
+            self.handicap,
+            self.result
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -127,6 +208,7 @@ pub struct StandingsPlayer {
     pub name: String,
     pub initialrating: f64,
     pub currentrating: f64,
+    pub results: Vec<Vec<OneSidedGame>>,
     pub score: f64,
     pub games: i64,
 }

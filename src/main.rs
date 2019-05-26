@@ -15,8 +15,8 @@ mod models;
 mod update_ratings;
 
 use crate::models::{
-    FormattableGameResult, Game, GameResult, Player, PlayerPresence, PlayerRoundPresence, Round,
-    RoundPresence, StandingsPlayer,
+    Colour, FormattableGameResult, Game, GameResult, OneSidedGame, Player, PlayerPresence,
+    PlayerRoundPresence, Round, RoundPresence, StandingsPlayer,
 };
 
 struct AppState {
@@ -750,6 +750,7 @@ fn edit_player_save(
 #[template(path = "standings.html")]
 struct StandingsTemplate {
     today: String,
+    rounds: Vec<Round>,
     players: Vec<StandingsPlayer>,
     games: i64,
     white_wins: i64,
@@ -779,7 +780,7 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
             "LEFT OUTER JOIN games g ON (p.id = g.black OR p.id = g.white) AND g.result IS NOT NULL ",
             "GROUP BY p.id ORDER BY p.currentrating DESC, p.id"),
         )?;
-    let players: Vec<StandingsPlayer> = stmt
+    let mut players: Vec<StandingsPlayer> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
@@ -795,29 +796,89 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
                 name,
                 initialrating,
                 currentrating,
+                results: Vec::new(),
                 score,
                 games,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
-    let (games, white_wins, black_wins, jigo, forfeit) =
-        conn.query_row(
-            concat!("SELECT COUNT(result), COUNT(result = 'WhiteWins' OR NULL), ",
-        "COUNT(result = 'BlackWins' OR NULL), COUNT(result = 'Jigo' OR NULL), ",
-        "COUNT(result IN ('WhiteWinsByDefault', 'BlackWinsByDefault', 'BothLose') OR NULL) ",
-        "FROM games"),
-            NO_PARAMS,
-            |row| {
-                let games: i64 = row.get(0)?;
-                let white_wins: i64 = row.get(1)?;
-                let black_wins: i64 = row.get(2)?;
-                let jigo: i64 = row.get(3)?;
-                let forfeit: i64 = row.get(4)?;
-                Ok((games, white_wins, black_wins, jigo, forfeit))
-            },
-        )?;
+    let mut rounds = Vec::<Round>::new();
+    let (mut games, mut white_wins, mut black_wins, mut jigo, mut forfeit) = (0, 0, 0, 0, 0);
+    {
+        let mut players_by_id: HashMap<i32, (usize, &mut StandingsPlayer)> = players
+            .iter_mut()
+            .enumerate()
+            .map(|t| (t.1.id, t))
+            .collect();
+        let mut stmt = conn.prepare(concat!(
+            "SELECT r.id, r.date, g.id, g.white, g.black, g.handicap, g.result ",
+            "FROM rounds r, games g ",
+            "WHERE g.played = r.id AND g.result IS NOT NULL ",
+            "ORDER BY r.date, g.id"
+        ))?;
+        stmt.query_map(NO_PARAMS, |row| {
+            let round_id: i32 = row.get(0)?;
+            let round_date: String = row.get(1)?;
+            let game_id: i32 = row.get(2)?;
+            let black_id: i32 = row.get(3)?;
+            let white_id: i32 = row.get(4)?;
+            let handicap: f64 = row.get(5)?;
+            let result: GameResult = row.get(6)?;
+            if rounds.last().map(|r| r.id) != Some(round_id) {
+                rounds.push(Round {
+                    id: round_id,
+                    date: round_date,
+                });
+            }
+            let black_place = players_by_id.get(&black_id).map(|t| t.0 + 1).unwrap_or(0);
+            let white_place = players_by_id.get(&white_id).map(|t| t.0 + 1).unwrap_or(0);
+            if let Some((_, black)) = players_by_id.get_mut(&black_id) {
+                let osg = OneSidedGame {
+                    id: game_id,
+                    colour: Colour::Black,
+                    other_place: white_place,
+                    handicap: handicap,
+                    result: result.seen_from_black(),
+                };
+                while black.results.len() < rounds.len() {
+                    black.results.push(Vec::new());
+                }
+                black.results.last_mut().unwrap().push(osg);
+            }
+            if let Some((_, white)) = players_by_id.get_mut(&white_id) {
+                let osg = OneSidedGame {
+                    id: game_id,
+                    colour: Colour::White,
+                    other_place: black_place,
+                    handicap: handicap,
+                    result: result.seen_from_white(),
+                };
+                while white.results.len() < rounds.len() {
+                    white.results.push(Vec::new());
+                }
+                white.results.last_mut().unwrap().push(osg);
+            }
+            games += 1;
+            match result {
+                GameResult::WhiteWins => white_wins += 1,
+                GameResult::BlackWins => black_wins += 1,
+                GameResult::Jigo => jigo += 1,
+                GameResult::WhiteWinsByDefault
+                | GameResult::BlackWinsByDefault
+                | GameResult::BothLose => forfeit += 1,
+            };
+            Ok(())
+        })?
+        .collect::<rusqlite::Result<()>>()?;
+    }
+    for player in players.iter_mut() {
+        while player.results.len() < rounds.len() {
+            player.results.push(Vec::new());
+        }
+    }
     Ok(StandingsTemplate {
         today,
+        rounds,
         players,
         games,
         white_wins,
