@@ -261,6 +261,7 @@ mod test {
             name: "Dummy".into(),
             initialrating: 1000.0,
             currentrating: 1100.3,
+            results: vec![],
             score: 3.0,
             games: 5,
         };
@@ -275,6 +276,7 @@ mod test {
             name: "Dummy".into(),
             initialrating: 1001.0,
             currentrating: 990.0,
+            results: vec![],
             score: 0.0,
             games: 1,
         };
@@ -289,6 +291,7 @@ mod test {
             name: "Dummy".into(),
             initialrating: 1001.0,
             currentrating: 1000.6,
+            results: vec![],
             score: 0.5,
             games: 1,
         };
