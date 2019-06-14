@@ -122,11 +122,11 @@ impl std::fmt::Display for FormattableGameResult {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = match self.0 {
             None => "?-?",
-            Some(GameResult::WhiteWins) => "1-0",
-            Some(GameResult::BlackWins) => "0-1",
+            Some(GameResult::WhiteWins) => "0-1",
+            Some(GameResult::BlackWins) => "1-0",
             Some(GameResult::Jigo) => "½-½",
-            Some(GameResult::WhiteWinsByDefault) => "1-0!",
-            Some(GameResult::BlackWinsByDefault) => "0-1!",
+            Some(GameResult::WhiteWinsByDefault) => "0-1!",
+            Some(GameResult::BlackWinsByDefault) => "1-0!",
             Some(GameResult::BothLose) => "0-0",
         };
         write!(formatter, "{}", s)
