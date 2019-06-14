@@ -26,7 +26,7 @@ function toggleShowGames(checkbox) {
 </div>
 <table border="1" id="playersTable" class="hideGames">
 <tr>
-<th>Place<th>Name<th>Rating
+<th>Place<th>Name<th>Rating<th>Rank
 {% for round in rounds %}
 <th class="individualGame">{{ round.date }}
 {% endfor %}
@@ -35,6 +35,7 @@ function toggleShowGames(checkbox) {
 <tr><td>{{loop.index}} ({{player.place_diff(loop.index)}})
 <td>{{player.name}}
 <td>{{player.currentrating}} ({{player.rating_diff()}})
+<td>{{player.currentrating.rank()}}
 {% for resultlist in player.results %}
 <td class="individualGame">
 {% for result in resultlist %}

@@ -7,10 +7,10 @@
 {% block body %}
 <h1>Go ladder - players</h1>
 <table border="1">
-<tr><th>Name<th>Rating
+<tr><th>Name<th>Rating<th>Rank
 {% for player in players %}
-<tr><td><a href="player/{{player.id}}">{{player.name}}</a><td>{{player.rating}}
+<tr><td><a href="player/{{player.id}}">{{player.name}}</a><td>{{player.rating}}<td>{{player.rating.rank()}}
 {% endfor %}
-<tr><td colspan="2"><a href="/add_player">New</a>
+<tr><td colspan="3"><a href="/add_player">New</a>
 </table>
 {% endblock %}
