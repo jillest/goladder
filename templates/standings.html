@@ -16,6 +16,11 @@ function toggleShowGames(checkbox) {
 	else
 		table.classList.add('hideGames');
 }
+
+window.addEventListener('load', function() {
+	var checkbox = document.getElementById('showGames');
+	toggleShowGames(checkbox);
+}, false);
 </script>
 {% endblock %}
 
