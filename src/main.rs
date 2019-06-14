@@ -822,8 +822,8 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
             let round_id: i32 = row.get(0)?;
             let round_date: String = row.get(1)?;
             let game_id: i32 = row.get(2)?;
-            let black_id: i32 = row.get(3)?;
-            let white_id: i32 = row.get(4)?;
+            let white_id: i32 = row.get(3)?;
+            let black_id: i32 = row.get(4)?;
             let handicap: f64 = row.get(5)?;
             let result: GameResult = row.get(6)?;
             if rounds.last().map(|r| r.id) != Some(round_id) {
