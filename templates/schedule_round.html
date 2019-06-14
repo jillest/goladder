@@ -53,8 +53,8 @@ window.addEventListener('load', function() {
 <table class="zebra">
 <tr><th colspan="2">White<th colspan="2">Black<th>Handicap<th>Result<th>Action
 {% for game in games %}
-<tr><td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating.round()}}
-<td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating.round()}}
+<tr><td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating}}
+<td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating}}
 <td>{{game.handicap}}<td>{{game.result}}
 <td><select name="action{{game.id}}" id="g{{game.id}}">
 <option value="" selected>--</option>
@@ -83,7 +83,7 @@ window.addEventListener('load', function() {
 {% for presence in presences %}
 <tr>
 <td><label for="p{{presence.player.id}}">{{presence.player.name}}</label>
-<td>{{presence.player.rating.round()}}
+<td>{{presence.player.rating}}
 <td><input type="checkbox" name="p{{presence.player.id}}" id="p{{presence.player.id}}" class="pairplayer" onclick="verifyEven(this.form)">
 {% endfor %}
 </table>

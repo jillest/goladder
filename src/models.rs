@@ -1,10 +1,12 @@
 use std::str::FromStr;
 
+use gorating::Rating;
+
 #[derive(Debug)]
 pub struct Player {
     pub id: i32,
     pub name: String,
-    pub rating: f64,
+    pub rating: Rating,
 }
 
 #[derive(Debug)]
@@ -206,8 +208,8 @@ pub struct StandingsPlayer {
     pub id: i32,
     pub original_index: usize,
     pub name: String,
-    pub initialrating: f64,
-    pub currentrating: f64,
+    pub initialrating: Rating,
+    pub currentrating: Rating,
     pub results: Vec<Vec<OneSidedGame>>,
     pub score: f64,
     pub games: i64,
@@ -259,8 +261,8 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
-            initialrating: 1000.0,
-            currentrating: 1100.3,
+            initialrating: Rating::new(1000.0),
+            currentrating: Rating::new(1100.3),
             results: vec![],
             score: 3.0,
             games: 5,
@@ -274,8 +276,8 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
-            initialrating: 1001.0,
-            currentrating: 990.0,
+            initialrating: Rating::new(1001.0),
+            currentrating: Rating::new(990.0),
             results: vec![],
             score: 0.0,
             games: 1,
@@ -289,8 +291,8 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
-            initialrating: 1001.0,
-            currentrating: 1000.6,
+            initialrating: Rating::new(1001.0),
+            currentrating: Rating::new(1000.6),
             results: vec![],
             score: 0.5,
             games: 1,

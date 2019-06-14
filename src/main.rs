@@ -10,6 +10,8 @@ use rusqlite::types::ToSql;
 use rusqlite::{OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
 
+use gorating::Rating;
+
 mod db;
 mod models;
 mod update_ratings;
@@ -190,10 +192,10 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
             let id: i32 = row.get(0)?;
             let white_id: i32 = row.get(1)?;
             let white: String = row.get(2)?;
-            let white_rating: f64 = row.get(3)?;
+            let white_rating = Rating::new(row.get(3)?);
             let black_id: i32 = row.get(4)?;
             let black: String = row.get(5)?;
-            let black_rating: f64 = row.get(6)?;
+            let black_rating = Rating::new(row.get(6)?);
             let handicap: f64 = row.get(7)?;
             let result: Option<GameResult> = row.get(8)?;
             Ok(Game {
@@ -227,7 +229,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         .query_map(&[&round_id], |row| {
             let player_id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let rating: f64 = row.get(2)?;
+            let rating = Rating::new(row.get(2)?);
             let schedule: bool = row.get(3)?;
             Ok(if !schedule || pairedplayers.contains(&player_id) {
                 None
@@ -250,7 +252,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         .query_map(NO_PARAMS, |row| {
             let player_id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let rating: f64 = row.get(2)?;
+            let rating = Rating::new(row.get(2)?);
             Ok(Player {
                 id: player_id,
                 name,
@@ -587,7 +589,7 @@ fn players(state: State<AppState>) -> Result<impl Responder> {
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let rating: f64 = row.get(2)?;
+            let rating = Rating::new(row.get(2)?);
             Ok(Player { id, name, rating })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -608,7 +610,7 @@ fn add_player(_state: State<AppState>) -> impl Responder {
         player: Player {
             id: 0,
             name: "".into(),
-            rating: 1100.0,
+            rating: Rating::new(1100.0),
         },
         presence: PlayerPresence {
             default: true,
@@ -706,7 +708,7 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl 
         |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let rating: f64 = row.get(2)?;
+            let rating = Rating::new(row.get(2)?);
             let default: bool = row.get(3)?;
             Ok((
                 Player { id, name, rating },
@@ -784,8 +786,8 @@ fn standings(state: State<AppState>) -> Result<impl Responder> {
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let initialrating: f64 = row.get(2)?;
-            let currentrating: f64 = row.get(3)?;
+            let initialrating = Rating::new(row.get(2)?);
+            let currentrating = Rating::new(row.get(3)?);
             let games: i64 = row.get(4)?;
             let wins: i64 = row.get(5)?;
             let jigos: i64 = row.get(6)?;

@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 
-use gorating::RatingSystem;
+use gorating::{Rating, RatingSystem};
 use rusqlite::types::ToSql;
 use rusqlite::{Transaction, NO_PARAMS};
 
@@ -9,19 +9,19 @@ use crate::models::GameResult;
 
 pub static RATINGS: RatingSystem = RatingSystem {
     epsilon: 0.016,
-    min_rating: -400.0,
+    min_rating: Rating(-400.0),
     max_drop: 100.0,
 };
 
 struct PendingRating {
-    rating: f64,
+    rating: Rating,
     pending: Cell<f64>,
 }
 
 impl PendingRating {
     fn new(rating: f64) -> Self {
         PendingRating {
-            rating,
+            rating: Rating(rating),
             pending: Cell::new(0.0),
         }
     }
@@ -30,7 +30,7 @@ impl PendingRating {
 fn apply_pending_changes(ratings: &mut HashMap<i32, PendingRating>) {
     for pr in ratings.values_mut() {
         let adj = f64::max(pr.pending.replace(0.0), -RATINGS.max_drop);
-        pr.rating = f64::max(pr.rating + adj, RATINGS.min_rating);
+        pr.rating = RATINGS.adjust_rating(pr.rating, adj);
     }
 }
 
@@ -75,7 +75,7 @@ pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
     apply_pending_changes(&mut ratings);
     let mut statement = trans.prepare("UPDATE players SET currentrating = ?2 WHERE id = ?1")?;
     for (id, rating) in ratings.iter() {
-        statement.execute::<&[&dyn ToSql]>(&[&id, &rating.rating])?;
+        statement.execute::<&[&dyn ToSql]>(&[&id, &rating.rating.0])?;
     }
     Ok(())
 }

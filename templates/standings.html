@@ -34,7 +34,7 @@ function toggleShowGames(checkbox) {
 {% for player in players %}
 <tr><td>{{loop.index}} ({{player.place_diff(loop.index)}})
 <td>{{player.name}}
-<td>{{player.currentrating.round()}} ({{player.rating_diff()}})
+<td>{{player.currentrating}} ({{player.rating_diff()}})
 {% for resultlist in player.results %}
 <td class="individualGame">
 {% for result in resultlist %}
