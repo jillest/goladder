@@ -24,6 +24,10 @@ struct StandingsTemplate {
 
 pub(crate) fn standings(conn: &rusqlite::Connection) -> Result<impl Responder> {
     let today = time::now().strftime("%Y-%m-%d").unwrap().to_string();
+    standings_internal(conn, today)
+}
+
+fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<StandingsTemplate> {
     let mut stmt = conn.prepare("SELECT id FROM players ORDER BY initialrating DESC, id")?;
     let original_indices: HashMap<i32, usize> = stmt
         .query_map(NO_PARAMS, |row| {
@@ -148,4 +152,25 @@ pub(crate) fn standings(conn: &rusqlite::Connection) -> Result<impl Responder> {
         jigo,
         forfeit,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::ensure_schema;
+
+    #[test]
+    fn calc_standings_0() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        let st = standings_internal(&conn, "2019-06-18".into()).unwrap();
+        assert_eq!(st.today, "2019-06-18");
+        assert!(st.rounds.is_empty());
+        assert!(st.players.is_empty());
+        assert_eq!(st.games, 0);
+        assert_eq!(st.white_wins, 0);
+        assert_eq!(st.black_wins, 0);
+        assert_eq!(st.jigo, 0);
+        assert_eq!(st.forfeit, 0);
+    }
 }
