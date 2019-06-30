@@ -224,7 +224,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         }
         pairedplayers
     };
-    let mut stmt = conn.prepare("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = ?1",
+    let mut stmt = conn.prepare("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = ?1 ORDER BY pl.currentrating DESC, pl.id",
         )?;
     let presences: Vec<RoundPresence> = stmt
         .query_map(&[&round_id], |row| {
