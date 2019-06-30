@@ -158,6 +158,7 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
 mod tests {
     use super::*;
     use crate::db::ensure_schema;
+    use crate::models::OneSidedGameResult;
 
     #[test]
     fn calc_standings_0() {
@@ -169,6 +170,88 @@ mod tests {
         assert!(st.players.is_empty());
         assert_eq!(st.games, 0);
         assert_eq!(st.white_wins, 0);
+        assert_eq!(st.black_wins, 0);
+        assert_eq!(st.jigo, 0);
+        assert_eq!(st.forfeit, 0);
+    }
+
+    #[test]
+    fn calc_standings_1() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        {
+            let trans = conn.transaction().unwrap();
+            trans
+                .execute(
+                    concat!(
+                        "INSERT INTO players (id, name, initialrating, currentrating) VALUES ",
+                        "(41, \"player1\", 1000.0, 1020.0), ",
+                        "(42, \"player2\", 1000.0, 980.0);"
+                    ),
+                    NO_PARAMS,
+                )
+                .unwrap();
+            trans
+                .execute(
+                    concat!(
+                        "INSERT INTO rounds (id, \"date\") VALUES ",
+                        "(99, '2019-06-17');",
+                    ),
+                    NO_PARAMS,
+                )
+                .unwrap();
+            trans
+                .execute(
+                    concat!(
+                        "INSERT INTO games (id, played, white, black, result) VALUES ",
+                        "(33, 99, 41, 42, 'WhiteWins');"
+                    ),
+                    NO_PARAMS,
+                )
+                .unwrap();
+            trans.commit().unwrap();
+        }
+        let st = standings_internal(&conn, "2019-06-18".into()).unwrap();
+        assert_eq!(st.today, "2019-06-18");
+        assert_eq!(st.rounds.len(), 1);
+        let round = &st.rounds[0];
+        assert_eq!(round.id, 99);
+        assert_eq!(round.date, "2019-06-17");
+        assert_eq!(st.players.len(), 2);
+        {
+            let p1 = &st.players[0];
+            assert_eq!(p1.id, 41);
+            assert_eq!(p1.name, "player1");
+            assert_eq!(p1.initialrating.0, 1000.0);
+            assert_eq!(p1.currentrating.0, 1020.0);
+            assert_eq!(p1.results.len(), 1);
+            let p1r1 = &p1.results[0];
+            assert_eq!(p1r1.len(), 1);
+            let p1r1r = &p1r1[0];
+            assert_eq!(p1r1r.id, 33);
+            assert_eq!(p1r1r.colour, Colour::White);
+            assert_eq!(p1r1r.result, OneSidedGameResult::Win);
+            assert_eq!(p1.score, 1.0);
+            assert_eq!(p1.games, 1);
+        }
+        {
+            let p2 = &st.players[1];
+            assert_eq!(p2.id, 42);
+            assert_eq!(p2.name, "player2");
+            assert_eq!(p2.initialrating.0, 1000.0);
+            assert_eq!(p2.currentrating.0, 980.0);
+            assert_eq!(p2.results.len(), 1);
+            let p2r1 = &p2.results[0];
+            assert_eq!(p2r1.len(), 1);
+            let p2r1r = &p2r1[0];
+            assert_eq!(p2r1r.id, 33);
+            assert_eq!(p2r1r.colour, Colour::Black);
+            assert_eq!(p2r1r.result, OneSidedGameResult::Lose);
+            assert_eq!(p2.score, 0.0);
+            assert_eq!(p2.games, 1);
+        }
+        assert_eq!(st.games, 1);
+        assert_eq!(st.white_wins, 1);
         assert_eq!(st.black_wins, 0);
         assert_eq!(st.jigo, 0);
         assert_eq!(st.forfeit, 0);

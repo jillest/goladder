@@ -155,7 +155,7 @@ pub struct Game {
     pub result: FormattableGameResult,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Colour {
     Black,
     White,
