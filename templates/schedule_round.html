@@ -39,6 +39,12 @@ function setGame(id, value) {
 	elem.value = value;
 }
 
+function setAllGames(form, state) {
+	var elems = form.querySelectorAll('select.editgame');
+	for (var i = 0; i < elems.length; i++)
+		elems[i].value = state;
+}
+
 window.addEventListener('load', function() {
 	verifyEven(document.getElementById('pairform'));
 }, false);
@@ -56,7 +62,7 @@ window.addEventListener('load', function() {
 <tr><td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating.rank()}}
 <td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating.rank()}}
 <td>{{game.handicap}}<td>{{game.result}}
-<td><select name="action{{game.id}}" id="g{{game.id}}">
+<td><select name="action{{game.id}}" id="g{{game.id}}" class="editgame">
 <option value="" selected>--</option>
 {% if game.result.0.is_some() %}
 <option value="delete">Delete game</option>
@@ -73,6 +79,9 @@ window.addEventListener('load', function() {
 </select>
 {% endfor %}
 </table>
+<input type="button" value="Mark all for deletion" onclick="setAllGames(this.form, 'delete')">
+<input type="button" value="Unmark all" onclick="setAllGames(this.form, '')">
+<br>
 {% else %}
 <p>No games.</p>
 {% endif %}
