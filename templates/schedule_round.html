@@ -110,14 +110,14 @@ window.addEventListener('load', function() {
       <select name="customblack">
         <option value="">-- Select player for black --</option>
         {% for player in all_players %}
-        <option value="{{ player.id }}">{{ player.name }}</option>
+        <option value="{{ player.id }}">{{ player.name }} ({{ player.rating.rank() }})</option>
         {% endfor %}
       </select>
     <td>
       <select name="customwhite">
         <option value="">-- Select player for white --</option>
         {% for player in all_players %}
-        <option value="{{ player.id }}">{{ player.name }}</option>
+        <option value="{{ player.id }}">{{ player.name }} ({{ player.rating.rank() }})</option>
         {% endfor %}
       </select>
     <td>
