@@ -29,7 +29,7 @@ window.addEventListener('load', function() {
 <div class="screenOnly bottomMargin">
   <label for="showGames">Show individual games</label><input type="checkbox" id="showGames" onclick="return toggleShowGames(this);">
 </div>
-<table border="1" id="playersTable" class="hideGames">
+<table id="playersTable" class="zebra hideGames">
 <tr>
 <th>Place<th>Name<th>Rating<th>Rank
 {% for round in rounds %}
@@ -52,7 +52,7 @@ window.addEventListener('load', function() {
 {% endfor %}
 </table>
 <br>
-<table border="1">
+<table class="zebra">
 <tr><td>Games<td>{{games}}
 <tr><td>White wins<td>{{white_wins}}
 <tr><td>Black wins<td>{{black_wins}}

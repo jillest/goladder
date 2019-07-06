@@ -6,7 +6,7 @@
 
 {% block body %}
 <h1>Go ladder - players</h1>
-<table border="1">
+<table class="zebra">
 <tr><th>Name<th>Rating<th>Rank
 {% for player in players %}
 <tr><td><a href="player/{{player.id}}">{{player.name}}</a><td>{{player.rating}}<td>{{player.rating.rank()}}
