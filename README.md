@@ -8,7 +8,8 @@ is secondary.
 Current status
 --------------
 
-This software is not currently recommended for production use.
+It can be used but has some rough edges and should not be exposed to the
+Internet.
 
 Requirements
 ------------
@@ -33,10 +34,15 @@ Installation
 Deployment
 ----------
 
-For production use, the application binary can be found somewhere under
-`target/`.
+For production use, a release build should be created. The application
+binary can be found somewhere under `target/`. All necessary data is part of
+this binary, except possibly the sqlite3 library.
 
-It is strongly recommended to place a reverse proxy such as nginx in front
-of this. This is useful for TLS, for example. Also, since the application
-currently does not do authentication, the reverse proxy will have to handle
-that.
+The binary can be run on any computer sufficiently similar to the build
+machine.
+
+Printing
+--------
+
+Various pages omit buttons and background colours when printing (using CSS
+media queries).
