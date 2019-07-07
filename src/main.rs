@@ -103,12 +103,23 @@ fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpRes
     }
 }
 
+trait CommonTemplate {
+    fn prog_name(&self) -> &'static str {
+        env!("CARGO_PKG_NAME")
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+}
+
 #[derive(Template)]
 #[template(path = "error.html")]
 struct ErrorTemplate {
     class: &'static str,
     message: String,
 }
+impl CommonTemplate for ErrorTemplate {}
 
 fn transform_error(error: Error) -> actix_web::Error {
     let template = match error {
@@ -146,6 +157,7 @@ fn transform_error(error: Error) -> actix_web::Error {
 struct IndexTemplate {
     rounds: Vec<Round>,
 }
+impl CommonTemplate for IndexTemplate {}
 
 fn index(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
@@ -168,6 +180,7 @@ struct ScheduleRoundTemplate {
     presences: Vec<RoundPresence>,
     all_players: Vec<Player>,
 }
+impl CommonTemplate for ScheduleRoundTemplate {}
 
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
     let round_id = params.0;
@@ -554,6 +567,7 @@ fn schedule_round_run(
 struct AddRoundTemplate {
     defaultdate: String,
 }
+impl CommonTemplate for AddRoundTemplate {}
 
 fn add_round(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
@@ -581,6 +595,7 @@ fn add_round_run(
 struct PlayersTemplate {
     players: Vec<Player>,
 }
+impl CommonTemplate for PlayersTemplate {}
 
 fn players(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
@@ -604,6 +619,7 @@ struct EditPlayerTemplate {
     player: Player,
     presence: PlayerPresence,
 }
+impl CommonTemplate for EditPlayerTemplate {}
 
 fn add_player(_state: State<AppState>) -> impl Responder {
     EditPlayerTemplate {
