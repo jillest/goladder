@@ -59,3 +59,11 @@ html {
 
 table.zebra { text-align: left; }
 .zebra tr:nth-child(even) { background: #dda; }
+
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button {
+	display: none;
+}
+
+input[type=number] {
+	-moz-appearance: textfield;
+}

@@ -35,7 +35,7 @@ action="/player/{{player.id}}"
 <td><input type="text" name="name" id="pname" value="{{player.name}}" required>
 <tr>
 <td><label for="pinitialrating">Initial rating</label>
-<td><input type="text" name="initialrating" id="pinitialrating" value="{{player.rating.0}}">
+<td><input type="number" name="initialrating" id="pinitialrating" value="{{player.rating.0}}" required step="any" min="-400">
 <tr>
 <td><label for="pdefaultschedule">Schedule by default</label>
 <td><input type="checkbox" name="defaultschedule" id="pdefaultschedule"
