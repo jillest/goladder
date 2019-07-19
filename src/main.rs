@@ -4,14 +4,20 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use actix_web::{http, server, App, Body, Form, HttpResponse, Path, Responder, State};
+use actix_web::multipart::MultipartItem;
+use actix_web::{
+    http, server, App, Body, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Path,
+    Responder, State,
+};
 use askama::Template;
+use futures::{future, Future, Stream};
 use rusqlite::types::ToSql;
 use rusqlite::{OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
 
 use gorating::Rating;
 
+mod data_exchange;
 mod db;
 mod models;
 mod standings;
@@ -32,6 +38,8 @@ enum Error {
     DatabasePool(r2d2::Error),
     BadParam(&'static str),
     Inconsistency(&'static str),
+    Json(serde_json::Error),
+    DataUpload(&'static str),
     ActixWeb(actix_web::Error),
 }
 
@@ -44,6 +52,18 @@ impl From<rusqlite::Error> for Error {
 impl From<r2d2::Error> for Error {
     fn from(e: r2d2::Error) -> Self {
         Error::DatabasePool(e)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Json(e)
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(_: std::str::Utf8Error) -> Self {
+        Error::DataUpload("bad UTF-8")
     }
 }
 
@@ -60,6 +80,8 @@ impl std::fmt::Display for Error {
             Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
             Error::BadParam(inner) => write!(f, "Invalid parameter: {}", inner),
             Error::Inconsistency(inner) => write!(f, "Inconsistency: {}", inner),
+            Error::Json(inner) => write!(f, "JSON: {}", inner),
+            Error::DataUpload(inner) => write!(f, "Data upload: {}", inner),
             Error::ActixWeb(inner) => write!(f, "{}", inner),
         }
     }
@@ -137,6 +159,14 @@ fn transform_error(error: Error) -> actix_web::Error {
         },
         Error::Inconsistency(inner) => ErrorTemplate {
             class: "Inconsistency",
+            message: inner.to_string(),
+        },
+        Error::Json(ref inner) => ErrorTemplate {
+            class: "JSON",
+            message: inner.to_string(),
+        },
+        Error::DataUpload(inner) => ErrorTemplate {
+            class: "Data upload",
             message: inner.to_string(),
         },
         Error::ActixWeb(inner) => return inner,
@@ -765,6 +795,45 @@ fn edit_player_save(
         .finish())
 }
 
+fn export(state: State<AppState>) -> Result<HttpResponse> {
+    let conn = state.dbpool.get()?;
+    data_exchange::export(&conn)
+}
+
+fn handle_import_item(
+    dbpool: Arc<db::Pool>,
+    item: MultipartItem<actix_web::dev::Payload>,
+) -> Box<dyn Future<Item = data_exchange::ImportTemplate, Error = Error>> {
+    match item {
+        MultipartItem::Field(field) => Box::new(
+            field
+                .map_err(actix_web::error::ErrorInternalServerError)
+                .map_err(Into::<Error>::into)
+                .concat2()
+                .and_then(move |bytes| {
+                    let mut conn = dbpool.get()?;
+                    let s = std::str::from_utf8(&bytes)?;
+                    data_exchange::import(&mut conn, s)
+                }),
+        ),
+        MultipartItem::Nested(_) => Box::new(future::err(Error::DataUpload("nested multipart"))),
+    }
+}
+
+fn import(req: HttpRequest<AppState>) -> FutureResponse<data_exchange::ImportTemplate> {
+    let dbpool = req.state().dbpool.clone();
+    Box::new(
+        req.multipart()
+            .map_err(actix_web::error::ErrorInternalServerError)
+            .map_err(Into::<Error>::into)
+            .and_then(move |item| handle_import_item(dbpool.clone(), item))
+            .fold(data_exchange::ImportTemplate::zero(), |acc, x| {
+                future::ok::<_, Error>(acc + x)
+            })
+            .map_err(transform_error),
+    )
+}
+
 fn standings_page(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     standings::standings(&conn)
@@ -811,6 +880,8 @@ fn main() -> Result<()> {
             r.method(http::Method::POST)
                 .with(handle_error(edit_player_save))
         })
+        .route("/export", http::Method::GET, handle_error(export))
+        .route("/import", http::Method::POST, import)
         .route(
             "/standings",
             http::Method::GET,

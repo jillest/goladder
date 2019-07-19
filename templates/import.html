@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% let section = "players" %}
+{% endblock %}
+
+{% block body %}
+<h1>Go ladder - import</h1>
+<p>Import from previous season completed</p>
+<p>Number of players imported: {{ imported }}</p>
+<p>Number of players skipped: {{ skipped }}</p>
+<p><a href="/players">Continue</a></p>
+{% endblock %}
