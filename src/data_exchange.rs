@@ -207,27 +207,35 @@ mod tests {
         let r = import_internal(&mut conn, &s).unwrap();
         assert_eq!(r.imported, 2);
         assert_eq!(r.skipped, 0);
-        let (ir, cr, ds): (f64, f64, bool) = conn.query_row(
-            concat!("SELECT initialrating, currentrating, defaultschedule FROM players ", "WHERE name = ?1"),
-            &["player1"],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap();
+        let (ir, cr, ds): (f64, f64, bool) = conn
+            .query_row(
+                concat!(
+                    "SELECT initialrating, currentrating, defaultschedule FROM players ",
+                    "WHERE name = ?1"
+                ),
+                &["player1"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
         assert_eq!(ir, 1020.0);
         assert_eq!(cr, 1020.0);
         assert_eq!(ds, false);
-        let (ir, cr, ds): (f64, f64, bool) = conn.query_row(
-            concat!("SELECT initialrating, currentrating, defaultschedule FROM players ", "WHERE name = ?1"),
-            &["player2"],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap();
+        let (ir, cr, ds): (f64, f64, bool) = conn
+            .query_row(
+                concat!(
+                    "SELECT initialrating, currentrating, defaultschedule FROM players ",
+                    "WHERE name = ?1"
+                ),
+                &["player2"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
         assert_eq!(ir, 980.0);
         assert_eq!(cr, 980.0);
         assert_eq!(ds, false);
-        let np: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM players",
-            NO_PARAMS,
-            |row| row.get(0)
-        ).unwrap();
+        let np: i64 = conn
+            .query_row("SELECT COUNT(*) FROM players", NO_PARAMS, |row| row.get(0))
+            .unwrap();
         assert_eq!(np, 2);
     }
 }
