@@ -1,4 +1,4 @@
-use actix_web::{Body, HttpResponse};
+use actix_web::{http, Body, HttpResponse};
 use askama::Template;
 use rusqlite::{params, NO_PARAMS};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,15 @@ pub(crate) fn export(conn: &rusqlite::Connection) -> Result<HttpResponse> {
     let body: Body = s.into();
     Ok(HttpResponse::Ok()
         .content_type("application/json")
+        .header(
+            http::header::CONTENT_DISPOSITION,
+            http::header::ContentDisposition {
+                disposition: http::header::DispositionType::Attachment,
+                parameters: vec![http::header::DispositionParam::Filename(
+                    "goladder_export.json".to_owned(),
+                )],
+            },
+        )
         .body(body))
 }
 
