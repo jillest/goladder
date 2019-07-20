@@ -198,6 +198,49 @@ pub struct Round {
     pub date: String,
 }
 
+/// Rounds, which will be iterated over grouped by month
+#[derive(Debug)]
+pub struct RoundsByMonth(pub Vec<Round>);
+
+/// All rounds in a particular month
+pub struct MonthRounds<'a> {
+    pub year_and_month: &'a str,
+    pub rounds: &'a [Round],
+}
+
+impl<'a> IntoIterator for &'a RoundsByMonth {
+    type Item = MonthRounds<'a>;
+    type IntoIter = RoundsByMonthIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RoundsByMonthIterator(self.0.as_slice())
+    }
+}
+
+pub struct RoundsByMonthIterator<'a>(&'a [Round]);
+
+impl<'a> Iterator for RoundsByMonthIterator<'a> {
+    type Item = MonthRounds<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let first_round = self.0.get(0)?;
+        let year_and_month = &first_round.date[..7];
+        let mut i = 1;
+        while let Some(round) = self.0.get(i) {
+            if year_and_month != &round.date[..7] {
+                break;
+            }
+            i += 1;
+        }
+        let (now, rest) = self.0.split_at(i);
+        self.0 = rest;
+        Some(MonthRounds {
+            year_and_month,
+            rounds: now,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct RoundPresence {
     pub player: Player,
@@ -254,6 +297,47 @@ impl StandingsPlayer {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_rounds_by_month_1() {
+        let rbm = &RoundsByMonth(Vec::new());
+        let r: Vec<MonthRounds> = rbm.into_iter().collect();
+        assert_eq!(r.len(), 0);
+    }
+
+    #[test]
+    fn test_rounds_by_month_2() {
+        let rbm = &RoundsByMonth(vec![
+            Round {
+                id: 21,
+                date: "2019-06-24".into(),
+            },
+            Round {
+                id: 22,
+                date: "2019-07-01".into(),
+            },
+            Round {
+                id: 23,
+                date: "2019-07-08".into(),
+            },
+            Round {
+                id: 24,
+                date: "2019-07-15".into(),
+            },
+        ]);
+        let r: Vec<MonthRounds> = rbm.into_iter().collect();
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].year_and_month, "2019-06");
+        assert_eq!(r[0].rounds.len(), 1);
+        assert_eq!(r[0].rounds[0].id, 21);
+        assert_eq!(r[0].rounds[0].date, "2019-06-24");
+        assert_eq!(r[1].year_and_month, "2019-07");
+        assert_eq!(r[1].rounds.len(), 3);
+        assert_eq!(r[1].rounds[0].id, 22);
+        assert_eq!(r[1].rounds[0].date, "2019-07-01");
+        assert_eq!(r[1].rounds[2].id, 24);
+        assert_eq!(r[1].rounds[2].date, "2019-07-15");
+    }
 
     #[test]
     fn test_rating_diff_1() {

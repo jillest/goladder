@@ -7,10 +7,13 @@
 {% block body %}
 <h1>Go ladder - rounds</h1>
 <table class="zebra">
-<tr><th>Round on
-{% for round in rounds %}
-<tr><td><a href="/schedule/{{round.id}}">{{round.date}}</a>
+<tr><th>Month<th>Dates
+{% for month in rounds %}
+<tr><td>{{month.year_and_month}}<td>
+{% for round in month.rounds %}
+<a href="/schedule/{{round.id}}">{{round.date[8..]}}</a>
 {% endfor %}
-<tr><td><a href="/add_round">New</a>
+{% endfor %}
+<tr><td><td><a href="/add_round">New</a>
 </table>
 {% endblock %}

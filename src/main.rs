@@ -25,7 +25,7 @@ mod update_ratings;
 
 use crate::models::{
     FormattableGameResult, Game, GameResult, Player, PlayerPresence, PlayerRoundPresence, Round,
-    RoundPresence,
+    RoundPresence, RoundsByMonth,
 };
 
 struct AppState {
@@ -185,7 +185,7 @@ fn transform_error(error: Error) -> actix_web::Error {
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    rounds: Vec<Round>,
+    rounds: RoundsByMonth,
 }
 impl CommonTemplate for IndexTemplate {}
 
@@ -199,7 +199,14 @@ fn index(state: State<AppState>) -> Result<impl Responder> {
             Ok(Round { id, date })
         })?
         .collect::<rusqlite::Result<_>>()?;
-    Ok(IndexTemplate { rounds })
+    for round in &rounds {
+        if round.date.len() != 10 {
+            return Err(Error::Inconsistency("invalid round date"));
+        }
+    }
+    Ok(IndexTemplate {
+        rounds: RoundsByMonth(rounds),
+    })
 }
 
 #[derive(Template)]
