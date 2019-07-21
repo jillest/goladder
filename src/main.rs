@@ -12,7 +12,7 @@ use actix_web::{
 use askama::Template;
 use futures::{future, Future, Stream};
 use rusqlite::types::ToSql;
-use rusqlite::{OptionalExtension, NO_PARAMS};
+use rusqlite::{params, OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
 
 use gorating::Rating;
@@ -30,6 +30,10 @@ use crate::models::{
 
 struct AppState {
     dbpool: Arc<db::Pool>,
+}
+
+fn get_today() -> String {
+    time::now().strftime("%Y-%m-%d").unwrap().to_string()
 }
 
 #[derive(Debug)]
@@ -741,14 +745,17 @@ fn add_player_save(
 }
 
 fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+    let today = get_today();
     let player_id = params.0;
     let conn = state.dbpool.get()?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ORDER BY r.date",
-        )?;
+    let mut stmt = conn.prepare(concat!(
+        "SELECT r.id, CAST(r.date AS TEXT), pr.schedule FROM rounds r ",
+        "LEFT OUTER JOIN presence pr ON r.id = pr.\"when\" AND pr.player = ?1 ",
+        "WHERE CAST(r.date AS TEXT) >= ?2 ",
+        "ORDER BY r.date"
+    ))?;
     let rpresence: Vec<_> = stmt
-        .query_map(&[&player_id], |row| {
+        .query_map(params![player_id, today], |row| {
             Ok(PlayerRoundPresence {
                 round_id: row.get(0)?,
                 round_date: row.get(1)?,
@@ -902,4 +909,22 @@ fn main() -> Result<()> {
     .unwrap()
     .run();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_today_1() {
+        let s = get_today();
+        assert_eq!(s.len(), 10);
+        for (i, c) in s.chars().enumerate() {
+            if i == 4 || i == 7 {
+                assert_eq!(c, '-');
+            } else {
+                assert!(c.is_digit(10));
+            }
+        }
+    }
 }

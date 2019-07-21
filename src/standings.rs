@@ -7,7 +7,7 @@ use rusqlite::NO_PARAMS;
 use gorating::Rating;
 
 use crate::models::{Colour, GameResult, OneSidedGame, Round, StandingsPlayer};
-use crate::{CommonTemplate, Result};
+use crate::{get_today, CommonTemplate, Result};
 
 #[derive(Template)]
 #[template(path = "standings.html")]
@@ -24,7 +24,7 @@ struct StandingsTemplate {
 impl CommonTemplate for StandingsTemplate {}
 
 pub(crate) fn standings(conn: &rusqlite::Connection) -> Result<impl Responder> {
-    let today = time::now().strftime("%Y-%m-%d").unwrap().to_string();
+    let today = get_today();
     standings_internal(conn, today)
 }
 
