@@ -217,6 +217,7 @@ fn index(state: State<AppState>) -> Result<impl Responder> {
 #[template(path = "schedule_round.html")]
 struct ScheduleRoundTemplate {
     round: Round,
+    is_past: bool,
     games: Vec<Game>,
     presences: Vec<RoundPresence>,
     all_players: Vec<Player>,
@@ -224,6 +225,7 @@ struct ScheduleRoundTemplate {
 impl CommonTemplate for ScheduleRoundTemplate {}
 
 fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+    let today = get_today();
     let round_id = params.0;
     let conn = state.dbpool.get()?;
     let round_date = conn
@@ -237,6 +239,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         )
         .optional()?
         .unwrap_or("??".to_owned());
+    let is_past = round_date < today;
     let round = Round {
         id: round_id,
         date: round_date,
@@ -280,8 +283,10 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
     };
     let mut stmt = conn.prepare("SELECT pl.id, pl.name, pl.currentrating, COALESCE(pr.schedule, pl.defaultschedule) FROM players pl LEFT OUTER JOIN presence pr ON pl.id = pr.player AND pr.\"when\" = ?1 ORDER BY pl.currentrating DESC, pl.id",
         )?;
-    let presences: Vec<RoundPresence> = stmt
-        .query_map(&[&round_id], |row| {
+    let presences: Vec<RoundPresence> = if is_past {
+        Vec::new()
+    } else {
+        stmt.query_map(&[&round_id], |row| {
             let player_id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
             let rating = Rating::new(row.get(2)?);
@@ -300,7 +305,8 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
             })
         })?
         .filter_map(Result::transpose)
-        .collect::<rusqlite::Result<_>>()?;
+        .collect::<rusqlite::Result<_>>()?
+    };
     let mut stmt = conn
         .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
     let all_players: Vec<Player> = stmt
@@ -317,6 +323,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
         .collect::<rusqlite::Result<_>>()?;
     Ok(ScheduleRoundTemplate {
         round,
+        is_past,
         games,
         presences,
         all_players,

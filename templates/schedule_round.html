@@ -100,7 +100,11 @@ window.addEventListener('load', function() {
 <input type="button" value="Deselect all" onclick="setAllCheckboxes(this.form, false)">
 <br>
 {% else %}
+{% if is_past %}
+<p>Pairing is not useful for a round in the past.</p>
+{% else %}
 <p>Nobody to pair.</p>
+{% endif %}
 {% endif %}
 <h2>Custom game</h2>
 <table class="zebra">
