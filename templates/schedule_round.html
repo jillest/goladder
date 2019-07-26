@@ -52,17 +52,17 @@ window.addEventListener('load', function() {
 </head>
 
 <body>
-<h1>Scheduling round on {{round.date}}</h1>
+<h1><span class="screenOnly">Scheduling round</span><span class="printOnly">Scheduled games</span> on {{round.date}}</h1>
 <form id="pairform" action="/schedule/{{round.id}}" method="POST">
-<h2>Scheduled games</h2>
+<h2 class="screenOnly">Scheduled games</h2>
 {% if games.len() != 0 %}
 <table class="zebra">
-<tr><th colspan="2">Black<th colspan="2">White<th>Handicap<th>Result<th>Action
+<tr><th colspan="2">Black<th colspan="2">White<th>Handicap<th>Result<th class="screenOnly">Action
 {% for game in games %}
 <tr><td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating.rank()}}
 <td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating.rank()}}
 <td>{{game.handicap}}<td>{{game.result}}
-<td><select name="action{{game.id}}" id="g{{game.id}}" class="editgame">
+<td class="screenOnly"><select name="action{{game.id}}" id="g{{game.id}}" class="editgame">
 <option value="" selected>--</option>
 {% if game.result.0.is_some() %}
 <option value="delete">Delete game</option>
@@ -79,12 +79,15 @@ window.addEventListener('load', function() {
 </select>
 {% endfor %}
 </table>
+<span class="screenOnly">
 <input type="button" value="Mark all for deletion" onclick="setAllGames(this.form, 'delete')">
 <input type="button" value="Unmark all" onclick="setAllGames(this.form, '')">
 <br>
+</span>
 {% else %}
 <p>No games.</p>
 {% endif %}
+<div class="screenOnly">
 <h2>Pair players</h2>
 {% if presences.len() != 0 %}
 <table class="zebra">
@@ -140,6 +143,7 @@ window.addEventListener('load', function() {
 <br>
 <input type="submit" value="Apply changes">
 <a href="..">Cancel</a>
+</div> <!-- class="screenOnly" -->
 </form>
 <address>{{ self.prog_name() }} {{ self.version() }}</address>
 </body>
