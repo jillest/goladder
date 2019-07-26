@@ -61,7 +61,8 @@ window.addEventListener('load', function() {
 {% for game in games %}
 <tr><td onclick="setGame({{game.id}}, 'BlackWins')" class="clickableText">{{game.black.name}}<td>{{game.black.rating.rank()}}
 <td onclick="setGame({{game.id}}, 'WhiteWins')" class="clickableText">{{game.white.name}}<td>{{game.white.rating.rank()}}
-<td>{{game.handicap}}<td>{{game.result}}
+<td>{{game.handicap}}
+<td><span{% if game.result.is_unknown() %} class="screenOnly"{% endif %}>{{game.result}}</span>
 <td class="screenOnly"><select name="action{{game.id}}" id="g{{game.id}}" class="editgame">
 <option value="" selected>--</option>
 {% if game.result.0.is_some() %}

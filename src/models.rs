@@ -118,6 +118,12 @@ impl GameResult {
 #[derive(Debug)]
 pub struct FormattableGameResult(pub Option<GameResult>);
 
+impl FormattableGameResult {
+    pub fn is_unknown(&self) -> bool {
+        self.0.is_none()
+    }
+}
+
 impl std::fmt::Display for FormattableGameResult {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = match self.0 {
