@@ -88,28 +88,30 @@ window.addEventListener('load', function() {
 {% else %}
 <p>No games.</p>
 {% endif %}
-<div class="screenOnly">
-<h2>Pair players</h2>
+<h2>Unpaired players</h2>
 {% if presences.len() != 0 %}
 <table class="zebra">
-<tr><th colspan="2">Player<th>Pair
+<tr><th colspan="2">Player<th class="screenOnly">Pair
 {% for presence in presences %}
 <tr>
 <td><label for="p{{presence.player.id}}">{{presence.player.name}}</label>
 <td>{{presence.player.rating.rank()}}
-<td><input type="checkbox" name="p{{presence.player.id}}" id="p{{presence.player.id}}" class="pairplayer" onclick="verifyEven(this.form)">
+<td class="screenOnly"><input type="checkbox" name="p{{presence.player.id}}" id="p{{presence.player.id}}" class="pairplayer" onclick="verifyEven(this.form)">
 {% endfor %}
 </table>
+<span class="screenOnly">
 <input type="button" value="Select all" onclick="setAllCheckboxes(this.form, true)">
 <input type="button" value="Deselect all" onclick="setAllCheckboxes(this.form, false)">
 <br>
+</span>
 {% else %}
 {% if is_past %}
 <p>Pairing is not useful for a round in the past.</p>
 {% else %}
-<p>Nobody to pair.</p>
+<p>All present players paired.</p>
 {% endif %}
 {% endif %}
+<div class="screenOnly">
 <h2>Custom game</h2>
 <table class="zebra">
   <tr><th>Black<th>White<th>Handicap<th>Result
