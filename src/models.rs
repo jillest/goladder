@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use gorating::Rating;
+use gorating::{Handicap, Rating};
 
 #[derive(Debug)]
 pub struct Player {
@@ -157,7 +157,7 @@ pub struct Game {
     pub id: i32,
     pub white: Player,
     pub black: Player,
-    pub handicap: f64,
+    pub handicap: Handicap,
     pub result: FormattableGameResult,
 }
 

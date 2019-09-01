@@ -15,7 +15,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
 
-use gorating::Rating;
+use gorating::{Handicap, Rating};
 
 mod data_exchange;
 mod db;
@@ -254,7 +254,7 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
             let black_id: i32 = row.get(4)?;
             let black: String = row.get(5)?;
             let black_rating = Rating::new(row.get(6)?);
-            let handicap: f64 = row.get(7)?;
+            let handicap = Handicap::new(row.get(7)?);
             let result: Option<GameResult> = row.get(8)?;
             Ok(Game {
                 id,
@@ -459,7 +459,7 @@ fn pair_players(trans: &rusqlite::Transaction, round_id: i32, player_ids: &[i32]
                 &round_id,
                 &player_ids[player],
                 &player_ids[opponent],
-                &handicap,
+                &handicap.to_f64(),
             ])?;
         }
     }
@@ -469,7 +469,7 @@ fn pair_players(trans: &rusqlite::Transaction, round_id: i32, player_ids: &[i32]
 struct CustomGame {
     white: i32,
     black: i32,
-    handicap: Option<f64>,
+    handicap: Option<Handicap>,
     result: Option<GameResult>,
 }
 
@@ -500,7 +500,7 @@ fn parse_custom_game(params: &HashMap<String, String>) -> Result<Option<CustomGa
             if s == "" {
                 None
             } else {
-                Some(f64::from_str(s).map_err(|_| Error::BadParam("customhandicap"))?)
+                Some(Handicap::from_str(s).map_err(|_| Error::BadParam("customhandicap"))?)
             }
         }
         None => None,
@@ -557,7 +557,13 @@ fn add_custom_game(
     let result = game.result.map(GameResult::to_str);
     trans.execute::<&[&dyn ToSql]>(
         "INSERT INTO games (played, white, black, handicap, result) VALUES (?1, ?2, ?3, ?4, ?5)",
-        &[&round_id, &game.white, &game.black, &handicap, &result],
+        &[
+            &round_id,
+            &game.white,
+            &game.black,
+            &handicap.to_f64(),
+            &result,
+        ],
     )?;
     if game.result.is_some() {
         *ratings_changed = true;

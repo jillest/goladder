@@ -25,6 +25,69 @@ impl Rating {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct Handicap(f64);
+
+impl std::fmt::Display for Handicap {
+    /// Format handicap value as handicap stones and komi
+    /// ```
+    /// let h = gorating::Handicap::new(3.5);
+    /// assert_eq!(h.to_string(), "3b5");
+    /// ```
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.0 == 0.0 {
+            write!(formatter, "0w6½")
+        } else if self.0 == 1.0 {
+            write!(formatter, "0b0")
+        } else if self.0 == 1.5 {
+            write!(formatter, "0b5")
+        } else if self.0.round() == self.0 {
+            write!(formatter, "{}b0", self.0)
+        } else if (self.0 - 0.5).round() == self.0 - 0.5 {
+            write!(formatter, "{}b5", self.0 - 0.5)
+        } else {
+            write!(formatter, "{}", self.0)
+        }
+    }
+}
+
+#[derive(Debug)]
+/// Error parsing a handicap value from a string
+pub struct BadHandicap;
+
+impl std::str::FromStr for Handicap {
+    type Err = BadHandicap;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Handicap::new(if s == "0w6½" || s == "0w6.5" {
+            0.0
+        } else if s == "0b0" || s == "0w0" {
+            1.0
+        } else if s == "0b5" {
+            1.5
+        } else if s.ends_with("b0") || s.ends_with("w0") {
+            s[..s.len() - 2].parse().map_err(|_| BadHandicap)?
+        } else if s.ends_with("b5") {
+            let x: f64 = s[..s.len() - 2].parse().map_err(|_| BadHandicap)?;
+            x + 0.5
+        } else {
+            s.parse().map_err(|_| BadHandicap)?
+        }))
+    }
+}
+
+impl Handicap {
+    #[inline]
+    pub fn new(x: f64) -> Self {
+        Handicap(x)
+    }
+
+    #[inline]
+    pub fn to_f64(self) -> f64 {
+        self.0
+    }
+}
+
 pub struct RatingSystem {
     pub epsilon: f64,
     pub min_rating: Rating,
@@ -74,7 +137,7 @@ impl RatingSystem {
         &self,
         rating: Rating,
         other_rating: Rating,
-        handicap: f64,
+        handicap: f64, // not a Handicap struct, may be negative
         result: f64,
     ) -> f64 {
         assert!(result >= 0.0 && result <= 1.0);
@@ -111,16 +174,16 @@ impl RatingSystem {
     /// ```
     /// let sys = gorating::RatingSystem::new();
     /// let h = sys.calculate_handicap(200.0);
-    /// assert_eq!(h, 2.5);
+    /// assert_eq!(h.to_f64(), 2.5);
     /// ```
-    pub fn calculate_handicap(&self, rating_diff: f64) -> f64 {
+    pub fn calculate_handicap(&self, rating_diff: f64) -> Handicap {
         assert!(rating_diff >= 0.0);
-        if rating_diff < 50.0 {
+        Handicap::new(if rating_diff < 50.0 {
             0.0
         } else {
             let unrounded = 0.5 + rating_diff / 100.0;
             (unrounded * 2.0).round() * 0.5
-        }
+        })
     }
 }
 
@@ -153,6 +216,47 @@ impl std::fmt::Display for Rank {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_handicap_display() {
+        assert_eq!(Handicap::new(0.0).to_string(), "0w6½");
+        assert_eq!(Handicap::new(1.0).to_string(), "0b0");
+        assert_eq!(Handicap::new(1.5).to_string(), "0b5");
+        assert_eq!(Handicap::new(2.0).to_string(), "2b0");
+        assert_eq!(Handicap::new(3.5).to_string(), "3b5");
+        assert_eq!(Handicap::new(12.5).to_string(), "12b5");
+        assert_eq!(Handicap::new(13.0).to_string(), "13b0");
+    }
+
+    #[test]
+    fn test_handicap_from_str_normal() {
+        assert_eq!(Handicap::from_str("0w6½").unwrap().0, 0.0);
+        assert_eq!(Handicap::from_str("0b0").unwrap().0, 1.0);
+        assert_eq!(Handicap::from_str("0b5").unwrap().0, 1.5);
+        assert_eq!(Handicap::from_str("2b0").unwrap().0, 2.0);
+        assert_eq!(Handicap::from_str("2b5").unwrap().0, 2.5);
+        assert_eq!(Handicap::from_str("12b5").unwrap().0, 12.5);
+        assert_eq!(Handicap::from_str("13b0").unwrap().0, 13.0);
+    }
+
+    #[test]
+    fn test_handicap_from_str_alternatives() {
+        assert_eq!(Handicap::from_str("0w6.5").unwrap().0, 0.0);
+        assert_eq!(Handicap::from_str("0").unwrap().0, 0.0);
+        assert_eq!(Handicap::from_str("0w0").unwrap().0, 1.0);
+        assert_eq!(Handicap::from_str("1").unwrap().0, 1.0);
+        assert_eq!(Handicap::from_str("1.5").unwrap().0, 1.5);
+        assert_eq!(Handicap::from_str("2w0").unwrap().0, 2.0);
+        assert_eq!(Handicap::from_str("2.0").unwrap().0, 2.0);
+        assert_eq!(Handicap::from_str("2.5").unwrap().0, 2.5);
+    }
+
+    #[test]
+    fn test_handicap_from_str_errors() {
+        assert!(Handicap::from_str("3w5").is_err());
+        assert!(Handicap::from_str("3w8").is_err());
+    }
 
     #[test]
     fn test_con() {
