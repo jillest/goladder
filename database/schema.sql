@@ -1,7 +1,3 @@
--- CREATE TABLE seasons (
--- 	id INTEGER PRIMARY KEY,
--- 	name TEXT NOT NULL
--- );
 CREATE TABLE players (
 	id INTEGER PRIMARY KEY,
 	name TEXT UNIQUE NOT NULL,
