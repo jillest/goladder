@@ -21,7 +21,7 @@
 <tr>
 {% for month in rounds %}
 {% for round in month.rounds %}
-<th>{{ round.date[8..] }}
+<th>{{ round.day() }}
 {% endfor %}
 {% endfor %}
 {% for player in players %}

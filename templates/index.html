@@ -11,7 +11,7 @@
 {% for month in rounds %}
 <tr><td>{{month.year_and_month}}<td>
 {% for round in month.rounds %}
-<a href="/schedule/{{round.id}}">{{round.date[8..]}}</a>
+<a href="/schedule/{{round.id}}">{{round.day()}}</a>
 {% endfor %}
 {% endfor %}
 <tr><td><td><a href="/add_round">New</a>

@@ -204,6 +204,12 @@ pub struct Round {
     pub date: String,
 }
 
+impl Round {
+    pub fn day(&self) -> &str {
+        &self.date[8..]
+    }
+}
+
 /// Rounds, which will be iterated over grouped by month
 #[derive(Debug)]
 pub struct RoundsByMonth(pub Vec<Round>);
