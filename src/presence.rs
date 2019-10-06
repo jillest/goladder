@@ -5,14 +5,14 @@ use actix_web::Responder;
 use askama::Template;
 use rusqlite::{params, NO_PARAMS};
 
-use crate::models::{PresencePlayer, Round};
+use crate::models::{PresencePlayer, Round, RoundsByMonth};
 use crate::{get_today, CommonTemplate, Error, Result};
 
 #[derive(Template)]
 #[template(path = "presence.html")]
 struct PresenceTemplate {
     today: String,
-    rounds: Vec<Round>,
+    rounds: RoundsByMonth,
     players: Vec<PresencePlayer>,
 }
 impl CommonTemplate for PresenceTemplate {}
@@ -75,7 +75,7 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
     .collect::<Result<()>>()?;
     Ok(PresenceTemplate {
         today,
-        rounds,
+        rounds: RoundsByMonth(rounds),
         players,
     })
 }
@@ -91,7 +91,7 @@ mod tests {
         ensure_schema(&conn).unwrap();
         let pt = presence_internal(&conn, "2019-10-06".into()).unwrap();
         assert_eq!(pt.today, "2019-10-06");
-        assert!(pt.rounds.is_empty());
+        assert!(pt.rounds.0.is_empty());
         assert!(pt.players.is_empty());
     }
 }

@@ -13,11 +13,17 @@
 <h1>Go ladder - presence overview on {{today}}</h1>
 <table id="presenceTable" class="zebra">
 <tr>
-<th>Name
-{% for round in rounds %}
-<th>{{ round.date }}
+<th rowspan="2">Name
+{% for month in rounds %}
+<th colspan="{{ month.rounds.len() }}">{{ month.year_and_month }}
 {% endfor %}
-<th>Default
+<th rowspan="2">Default
+<tr>
+{% for month in rounds %}
+{% for round in month.rounds %}
+<th>{{ round.date[8..] }}
+{% endfor %}
+{% endfor %}
 {% for player in players %}
 <tr><td>{{player.name}}
 {% for presence in player.presences %}
