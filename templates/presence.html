@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% let section = "presence" %}
+<style>
+.specificPresence {
+	font-weight: bold;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<h1>Go ladder - presence overview on {{today}}</h1>
+<table id="presenceTable" class="zebra">
+<tr>
+<th>Name
+{% for round in rounds %}
+<th>{{ round.date }}
+{% endfor %}
+<th>Default
+{% for player in players %}
+<tr><td>{{player.name}}
+{% for presence in player.presences %}
+<td class="{% if presence.is_some() %}specificPresence{% endif %}">
+{{ player.format_round_presence(presence) }}
+{% endfor %}
+<td>{{ player.format_default_presence() }}
+{% endfor %}
+</table>
+{% endblock %}

@@ -300,6 +300,27 @@ impl StandingsPlayer {
     }
 }
 
+pub struct PresencePlayer {
+    pub id: i32,
+    pub name: String,
+    pub default: bool,
+    pub presences: Vec<Option<bool>>,
+}
+
+impl PresencePlayer {
+    pub fn format_round_presence(&self, presence: &Option<bool>) -> &'static str {
+        if presence.unwrap_or(self.default) {
+            "+"
+        } else {
+            "−"
+        }
+    }
+
+    pub fn format_default_presence(&self) -> &'static str {
+        self.format_round_presence(&None)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

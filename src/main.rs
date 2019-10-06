@@ -20,6 +20,7 @@ use gorating::{Handicap, Rating};
 mod data_exchange;
 mod db;
 mod models;
+mod presence;
 mod standings;
 mod update_ratings;
 
@@ -866,6 +867,11 @@ fn standings_page(state: State<AppState>) -> Result<impl Responder> {
     standings::standings(&conn)
 }
 
+fn presence_page(state: State<AppState>) -> Result<impl Responder> {
+    let conn = state.dbpool.get()?;
+    presence::presence(&conn)
+}
+
 fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
     move |x| f(x).map_err(transform_error)
 }
@@ -914,6 +920,7 @@ fn main() -> Result<()> {
             http::Method::GET,
             handle_error(standings_page),
         )
+        .route("/presence", http::Method::GET, handle_error(presence_page))
         .resource("/static/{path:.*}", |r| {
             r.method(http::Method::GET).with(static_asset)
         })
