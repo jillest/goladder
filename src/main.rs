@@ -26,7 +26,7 @@ mod update_ratings;
 
 use crate::models::{
     FormattableGameResult, Game, GameResult, Player, PlayerPresence, PlayerRoundPresence, Round,
-    RoundPresence, RoundsByMonth,
+    RoundExtra, RoundPresence, RoundsByMonth,
 };
 
 struct AppState {
@@ -196,12 +196,14 @@ impl CommonTemplate for IndexTemplate {}
 
 fn index(state: State<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
-    let mut stmt = conn.prepare("SELECT id, CAST(date AS TEXT) FROM rounds ORDER BY date")?;
+    let mut stmt =
+        conn.prepare("SELECT id, CAST(date AS TEXT), extra FROM rounds ORDER BY date")?;
     let rounds: Vec<Round> = stmt
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
             let date: String = row.get(1)?;
-            Ok(Round { id, date })
+            let extra: RoundExtra = row.get(2)?;
+            Ok(Round { id, date, extra })
         })?
         .collect::<rusqlite::Result<_>>()?;
     for round in &rounds {
@@ -229,22 +231,25 @@ fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<im
     let today = get_today();
     let round_id = params.0;
     let conn = state.dbpool.get()?;
-    let round_date = conn
+    let round = conn
         .query_row(
-            "SELECT CAST(date AS TEXT) FROM rounds WHERE id=?1",
+            "SELECT CAST(date AS TEXT), extra FROM rounds WHERE id=?1",
             &[&round_id],
             |row| {
-                let date: String = row.get(0)?;
-                Ok(date)
+                Ok(Round {
+                    id: round_id,
+                    date: row.get(0)?,
+                    extra: row.get(1)?,
+                })
             },
         )
         .optional()?
-        .unwrap_or("??".to_owned());
-    let is_past = round_date < today;
-    let round = Round {
-        id: round_id,
-        date: round_date,
-    };
+        .unwrap_or(Round {
+            id: round_id,
+            date: "??".to_owned(),
+            extra: Default::default(),
+        });
+    let is_past = round.date < today;
     let mut stmt = conn.prepare("SELECT g.id, pw.id, pw.name, pw.currentrating, pb.id, pb.name, pb.currentrating, g.handicap, g.result FROM players pw, players pb, games g WHERE pw.id = g.white AND pb.id = g.black AND g.played = ?1 ORDER BY g.id")?;
     let games: Vec<Game> = stmt
         .query_map(&[&round_id], |row| {
@@ -572,6 +577,37 @@ fn add_custom_game(
     Ok(())
 }
 
+fn parse_round_extra(params: &HashMap<String, String>) -> Result<Option<RoundExtra>> {
+    let desc = match params.get("desc") {
+        Some(d) => d,
+        None => return Err(Error::BadParam("desc")),
+    };
+    let orig_desc = match params.get("orig_desc") {
+        Some(d) => d,
+        None => return Err(Error::BadParam("orig_desc")),
+    };
+    let orig_unknown_fields = match params.get("orig_unknown_fields") {
+        Some(s) => serde_json::from_str(&s)?,
+        None => return Err(Error::BadParam("orig_unknown_fields")),
+    };
+    Ok(if desc == orig_desc {
+        None
+    } else {
+        Some(RoundExtra {
+            desc: desc.to_owned(),
+            unknown_fields: orig_unknown_fields,
+        })
+    })
+}
+
+fn save_round_extra(trans: &rusqlite::Transaction, id: i32, extra: &RoundExtra) -> Result<()> {
+    trans.execute(
+        "UPDATE rounds SET extra = ?1 WHERE id = ?2",
+        params![extra, &id],
+    )?;
+    Ok(())
+}
+
 fn schedule_round_run(
     (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
@@ -600,6 +636,7 @@ fn schedule_round_run(
         })
         .collect();
     let opt_custom_game = parse_custom_game(&params.0)?;
+    let opt_extra = parse_round_extra(&params.0)?;
     let mut conn = state.dbpool.get()?;
     let trans = conn.transaction()?;
     let mut ratings_changed = false;
@@ -607,6 +644,9 @@ fn schedule_round_run(
     pair_players(&trans, round_id, &player_ids)?;
     if let Some(custom_game) = opt_custom_game {
         add_custom_game(&trans, round_id, &custom_game, &mut ratings_changed)?;
+    }
+    if let Some(extra) = opt_extra {
+        save_round_extra(&trans, round_id, &extra)?;
     }
     if ratings_changed {
         update_ratings::update_ratings(&trans)?;

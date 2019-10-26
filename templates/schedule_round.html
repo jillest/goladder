@@ -149,6 +149,12 @@ window.addEventListener('load', function() {
         <option value="BothLose">Both forfeit</option>
       </select>
 </table>
+<h2>Round properties</h2>
+<label for="desc">Description</label>
+<input type="text" name="desc" id="desc" value="{{round.extra.desc}}">
+<input type="hidden" name="orig_desc" value="{{round.extra.desc}}">
+<input type="hidden" name="orig_unknown_fields" value="{{round.extra.unknown_fields_json()}}">
+<br>
 <br>
 <input type="submit" value="Apply changes">
 <a href="..">Cancel</a>

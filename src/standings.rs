@@ -6,7 +6,7 @@ use rusqlite::NO_PARAMS;
 
 use gorating::Rating;
 
-use crate::models::{Colour, GameResult, OneSidedGame, Round, StandingsPlayer};
+use crate::models::{Colour, GameResult, OneSidedGame, Round, RoundExtra, StandingsPlayer};
 use crate::{get_today, CommonTemplate, Result};
 
 #[derive(Template)]
@@ -78,7 +78,7 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
             .map(|t| (t.1.id, t))
             .collect();
         let mut stmt = conn.prepare(concat!(
-            "SELECT r.id, r.date, g.id, g.white, g.black, g.handicap, g.result ",
+            "SELECT r.id, r.date, r.extra, g.id, g.white, g.black, g.handicap, g.result ",
             "FROM rounds r, games g ",
             "WHERE g.played = r.id AND g.result IS NOT NULL ",
             "ORDER BY r.date, g.id"
@@ -86,15 +86,17 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
         stmt.query_map(NO_PARAMS, |row| {
             let round_id: i32 = row.get(0)?;
             let round_date: String = row.get(1)?;
-            let game_id: i32 = row.get(2)?;
-            let white_id: i32 = row.get(3)?;
-            let black_id: i32 = row.get(4)?;
-            let handicap: f64 = row.get(5)?;
-            let result: GameResult = row.get(6)?;
+            let round_extra: RoundExtra = row.get(2)?;
+            let game_id: i32 = row.get(3)?;
+            let white_id: i32 = row.get(4)?;
+            let black_id: i32 = row.get(5)?;
+            let handicap: f64 = row.get(6)?;
+            let result: GameResult = row.get(7)?;
             if rounds.last().map(|r| r.id) != Some(round_id) {
                 rounds.push(Round {
                     id: round_id,
                     date: round_date,
+                    extra: round_extra,
                 });
             }
             let black_place = players_by_id.get(&black_id).map(|t| t.0 + 1).unwrap_or(0);

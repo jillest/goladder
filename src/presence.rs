@@ -23,12 +23,14 @@ pub(crate) fn presence(conn: &rusqlite::Connection) -> Result<impl Responder> {
 }
 
 fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<PresenceTemplate> {
-    let mut stmt = conn.prepare("SELECT id, date FROM rounds WHERE date >= ?1 ORDER BY date")?;
+    let mut stmt =
+        conn.prepare("SELECT id, date, extra FROM rounds WHERE date >= ?1 ORDER BY date")?;
     let rounds: Vec<Round> = stmt
         .query_map(params![today], |row| {
             Ok(Round {
                 id: row.get(0)?,
                 date: row.get(1)?,
+                extra: row.get(2)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;

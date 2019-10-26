@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
 
 use gorating::{Handicap, Rating};
 
@@ -198,10 +201,26 @@ impl std::fmt::Display for OneSidedGame {
     }
 }
 
+/// Stored as JSON in a round's extra field
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RoundExtra {
+    pub desc: String,
+    #[serde(flatten)]
+    pub unknown_fields: HashMap<String, serde_json::Value>,
+}
+
+impl RoundExtra {
+    pub fn unknown_fields_json(&self) -> String {
+        serde_json::to_string(&self.unknown_fields).unwrap()
+    }
+}
+
 #[derive(Debug)]
 pub struct Round {
     pub id: i32,
     pub date: String,
+    pub extra: RoundExtra,
 }
 
 impl Round {
@@ -344,18 +363,22 @@ mod test {
             Round {
                 id: 21,
                 date: "2019-06-24".into(),
+                extra: Default::default(),
             },
             Round {
                 id: 22,
                 date: "2019-07-01".into(),
+                extra: Default::default(),
             },
             Round {
                 id: 23,
                 date: "2019-07-08".into(),
+                extra: Default::default(),
             },
             Round {
                 id: 24,
                 date: "2019-07-15".into(),
+                extra: Default::default(),
             },
         ]);
         let r: Vec<MonthRounds> = rbm.into_iter().collect();

@@ -3,9 +3,9 @@ use std::str::FromStr;
 
 use r2d2_sqlite::SqliteConnectionManager;
 
-use rusqlite::types::{FromSql, FromSqlError, ValueRef};
+use rusqlite::types::{FromSql, FromSqlError, ToSql, ToSqlOutput, Value, ValueRef};
 
-use crate::models::GameResult;
+use crate::models::{GameResult, RoundExtra};
 
 pub type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 
@@ -32,11 +32,34 @@ impl FromSql for GameResult {
     }
 }
 
+impl FromSql for RoundExtra {
+    fn column_result(val: ValueRef) -> Result<Self, FromSqlError> {
+        match val {
+            ValueRef::Null => Ok(Default::default()),
+            ValueRef::Text(s) => {
+                serde_json::from_str(s).map_err(|e| FromSqlError::Other(Box::new(e)))
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl ToSql for RoundExtra {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let s = serde_json::to_string(self)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        Ok(ToSqlOutput::Owned(Value::Text(s)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::GameResult;
     use rusqlite::types::{FromSql, ValueRef};
+    use serde_json::json;
+    use std::collections::HashMap;
+    use std::iter;
 
     #[test]
     fn game_result_from_sql_ok() {
@@ -57,6 +80,41 @@ mod tests {
         let val = ValueRef::Integer(3);
         let r: Result<GameResult, _> = FromSql::column_result(val);
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn round_extra_from_sql_null() {
+        let val = ValueRef::Null;
+        let re: RoundExtra = FromSql::column_result(val).unwrap();
+        assert_eq!(re.unknown_fields.len(), 0);
+    }
+
+    #[test]
+    fn round_extra_from_sql_empty() {
+        let val = ValueRef::Text("{}");
+        let re: RoundExtra = FromSql::column_result(val).unwrap();
+        assert_eq!(re.unknown_fields.len(), 0);
+    }
+
+    #[test]
+    fn round_extra_from_sql_unknown_field() {
+        let val = ValueRef::Text("{\"unknown_field_for_test\": 8}");
+        let re: RoundExtra = FromSql::column_result(val).unwrap();
+        let expected_fields: HashMap<_, _> =
+            iter::once(("unknown_field_for_test".to_owned(), json!(8))).collect();
+        assert_eq!(re.unknown_fields, expected_fields);
+    }
+
+    #[test]
+    fn round_extra_to_sql_1() {
+        let re: RoundExtra = Default::default();
+        let out = re.to_sql().unwrap();
+        let s = match out {
+            ToSqlOutput::Borrowed(ValueRef::Text(s)) => s,
+            ToSqlOutput::Owned(Value::Text(ref s)) => s,
+            _ => panic!("incorrect type for RoundExtra SQL result in {:?}", out),
+        };
+        assert_eq!(&s[0..1], "{");
     }
 
     #[test]
