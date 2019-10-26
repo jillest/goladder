@@ -1,6 +1,6 @@
 [package]
 name = "goladder"
-version = "0.3.7"
+version = "0.3.8"
 authors = ["Jilles Tjoelker <jilles@stack.nl>"]
 edition = "2018"
 
