@@ -586,15 +586,22 @@ fn parse_round_extra(params: &HashMap<String, String>) -> Result<Option<RoundExt
         Some(d) => d,
         None => return Err(Error::BadParam("orig_desc")),
     };
+    let disabled = params.get("disabled").is_some();
+    let orig_disabled = match params.get("orig_disabled").map(String::as_str) {
+        Some("true") => true,
+        Some("false") => false,
+        _ => return Err(Error::BadParam("orig_disabled")),
+    };
     let orig_unknown_fields = match params.get("orig_unknown_fields") {
         Some(s) => serde_json::from_str(&s)?,
         None => return Err(Error::BadParam("orig_unknown_fields")),
     };
-    Ok(if desc == orig_desc {
+    Ok(if (desc, disabled) == (orig_desc, orig_disabled) {
         None
     } else {
         Some(RoundExtra {
             desc: desc.to_owned(),
+            disabled,
             unknown_fields: orig_unknown_fields,
         })
     })

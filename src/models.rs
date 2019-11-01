@@ -206,6 +206,7 @@ impl std::fmt::Display for OneSidedGame {
 #[serde(default)]
 pub struct RoundExtra {
     pub desc: String,
+    pub disabled: bool,
     #[serde(flatten)]
     pub unknown_fields: HashMap<String, serde_json::Value>,
 }
@@ -325,16 +326,30 @@ impl StandingsPlayer {
     }
 }
 
+#[derive(Clone)]
+pub struct PresencePlayerRound {
+    pub round_disabled: bool,
+    pub presence: Option<bool>,
+}
+
+impl PresencePlayerRound {
+    pub fn is_specific(&self) -> bool {
+        !self.round_disabled && self.presence.is_some()
+    }
+}
+
 pub struct PresencePlayer {
     pub id: i32,
     pub name: String,
     pub default: bool,
-    pub presences: Vec<Option<bool>>,
+    pub presences: Vec<PresencePlayerRound>,
 }
 
 impl PresencePlayer {
-    pub fn format_round_presence(&self, presence: &Option<bool>) -> &'static str {
-        if presence.unwrap_or(self.default) {
+    pub fn format_round_presence(&self, presence: &PresencePlayerRound) -> &'static str {
+        if presence.round_disabled {
+            "×"
+        } else if presence.presence.unwrap_or(self.default) {
             "+"
         } else {
             "−"
@@ -342,7 +357,10 @@ impl PresencePlayer {
     }
 
     pub fn format_default_presence(&self) -> &'static str {
-        self.format_round_presence(&None)
+        self.format_round_presence(&PresencePlayerRound {
+            round_disabled: false,
+            presence: None,
+        })
     }
 }
 

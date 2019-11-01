@@ -5,7 +5,7 @@ use actix_web::Responder;
 use askama::Template;
 use rusqlite::{params, NO_PARAMS};
 
-use crate::models::{PresencePlayer, Round, RoundsByMonth};
+use crate::models::{PresencePlayer, PresencePlayerRound, Round, RoundsByMonth};
 use crate::{get_today, CommonTemplate, Error, Result};
 
 #[derive(Template)]
@@ -39,6 +39,13 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
         .enumerate()
         .map(|(idx, round)| (round.id, idx))
         .collect();
+    let default_presences: Vec<PresencePlayerRound> = rounds
+        .iter()
+        .map(|round| PresencePlayerRound {
+            round_disabled: round.extra.disabled,
+            presence: None,
+        })
+        .collect();
     let mut stmt = conn
         .prepare("SELECT id, name, defaultschedule FROM players ORDER BY currentrating DESC, id")?;
     let mut players: Vec<PresencePlayer> = stmt
@@ -47,7 +54,7 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
                 id: row.get(0)?,
                 name: row.get(1)?,
                 default: row.get(2)?,
-                presences: vec![None; rounds.len()],
+                presences: default_presences.clone(),
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -66,7 +73,7 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
                 .get(&player_id)
                 .cloned()
                 .ok_or(Error::Inconsistency("missing player"))?;
-            let presence = &mut players[player_idx].presences[round_idx];
+            let presence = &mut players[player_idx].presences[round_idx].presence;
             if presence.is_some() {
                 return Err(Error::Inconsistency("duplicate presence"));
             }
