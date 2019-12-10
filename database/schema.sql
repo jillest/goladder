@@ -15,6 +15,7 @@ CREATE TABLE presence (
 	player INTEGER REFERENCES players (id) NOT NULL,
 	"when" INTEGER REFERENCES rounds (id) NOT NULL,
 	schedule BOOLEAN NOT NULL,
+	extra JSONB,
 	UNIQUE (player, "when")
 );
 
