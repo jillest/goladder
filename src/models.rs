@@ -283,6 +283,7 @@ pub struct StandingsPlayer {
     pub id: i32,
     pub original_index: usize,
     pub name: String,
+    pub default_schedule: bool,
     pub initialrating: Rating,
     pub currentrating: Rating,
     pub results: Vec<Vec<OneSidedGame>>,
@@ -317,6 +318,14 @@ impl std::fmt::Display for RatingDiff {
 }
 
 impl StandingsPlayer {
+    pub fn format_default_schedule(&self) -> &'static str {
+        if self.default_schedule {
+            "+"
+        } else {
+            "−"
+        }
+    }
+
     pub fn place_diff(&self, index: usize) -> PlaceDiff {
         PlaceDiff(index as isize - self.original_index as isize)
     }
@@ -419,6 +428,7 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
+            default_schedule: false,
             initialrating: Rating::new(1000.0),
             currentrating: Rating::new(1100.3),
             results: vec![],
@@ -434,6 +444,7 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
+            default_schedule: false,
             initialrating: Rating::new(1001.0),
             currentrating: Rating::new(990.0),
             results: vec![],
@@ -449,6 +460,7 @@ mod test {
             id: 1,
             original_index: 1,
             name: "Dummy".into(),
+            default_schedule: false,
             initialrating: Rating::new(1001.0),
             currentrating: Rating::new(1000.6),
             results: vec![],

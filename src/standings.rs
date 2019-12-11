@@ -40,7 +40,8 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
         .collect::<rusqlite::Result<_>>()?;
     let mut stmt = conn
         .prepare(
-            concat!("SELECT p.id, p.name, p.initialrating, p.currentrating, COUNT(g.id), ",
+            concat!("SELECT p.id, p.name, p.defaultschedule, p.initialrating, p.currentrating, ",
+            "COUNT(g.id), ",
             "COUNT((p.id = g.black AND g.result IN ('BlackWins', 'BlackWinsByDefault')) OR (p.id = g.white AND g.result IN ('WhiteWins', 'WhiteWinsByDefault')) OR NULL), ",
             "COUNT(g.result = 'Jigo' OR NULL) ",
             "FROM players p ",
@@ -51,16 +52,18 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
         .query_map(NO_PARAMS, |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
-            let initialrating = Rating::new(row.get(2)?);
-            let currentrating = Rating::new(row.get(3)?);
-            let games: i64 = row.get(4)?;
-            let wins: i64 = row.get(5)?;
-            let jigos: i64 = row.get(6)?;
+            let default_schedule: bool = row.get(2)?;
+            let initialrating = Rating::new(row.get(3)?);
+            let currentrating = Rating::new(row.get(4)?);
+            let games: i64 = row.get(5)?;
+            let wins: i64 = row.get(6)?;
+            let jigos: i64 = row.get(7)?;
             let score = wins as f64 + 0.5 * jigos as f64;
             Ok(StandingsPlayer {
                 id,
                 original_index: original_indices[&id],
                 name,
+                default_schedule,
                 initialrating,
                 currentrating,
                 results: Vec::new(),

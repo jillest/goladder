@@ -31,7 +31,7 @@ window.addEventListener('load', function() {
 </div>
 <table id="playersTable" class="zebra hideGames">
 <tr>
-<th>Place<th>Name<th>Rating<th>Rank
+<th>Place<th>Name<th>Def.<th>Rating<th>Rank
 {% for round in rounds %}
 <th class="individualGame">{{ round.date }}
 {% endfor %}
@@ -39,6 +39,7 @@ window.addEventListener('load', function() {
 {% for player in players %}
 <tr><td>{{loop.index}} ({{player.place_diff(loop.index)}})
 <td>{{player.name}}
+<td>{{player.format_default_schedule()}}
 <td>{{player.currentrating}} ({{player.rating_diff()}})
 <td>{{player.currentrating.rank()}}
 {% for resultlist in player.results %}
