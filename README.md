@@ -46,3 +46,16 @@ Printing
 
 Various pages omit buttons and background colours when printing (using CSS
 media queries).
+
+Updating
+--------
+
+The idea is that the competition has "seasons", for example two a year.
+
+During a season, the rules are kept constant and only minor updates to the
+application are applied.
+
+When a new season is to be started, the players can be exported to a file
+using the old application and old database. Then, the new application
+(possibly with larger updates) can be started using a new database, and the
+players can be imported.
