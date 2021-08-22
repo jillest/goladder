@@ -338,6 +338,173 @@ mod test {
         );
     }
 
+    // Check even games at various strengths.
+    #[test]
+    fn test_ratings_no_epsilon_generic_1() {
+        let sys = RatingSystem {
+            epsilon: 0.0,
+            min_rating: Rating(-500.0),
+            max_drop: 100.0,
+        };
+        let test_ratings = [-200.0, 100.0, 500.0, 1000.0, 1500.0, 2000.0, 2400.0];
+        let mut optprevadj = None;
+        for r in test_ratings.iter().map(|&x| Rating(x)) {
+            let adjw = sys.rating_adjustment(r, r, 0.0, 1.0);
+            let adjl = sys.rating_adjustment(r, r, 0.0, 0.0);
+            assert!(adjw > 0.0);
+            assert!(adjl < 0.0);
+            assert_eq!(adjw, -adjl);
+            if let Some(prevadj) = optprevadj {
+                assert!(adjw <= prevadj);
+            }
+            optprevadj = Some(adjw);
+        }
+    }
+
+    // Consider a player with rating 1750 and check the effect of games
+    // on other players with a variety of ratings.
+    #[test]
+    fn test_ratings_no_epsilon_generic_2() {
+        let sys = RatingSystem {
+            epsilon: 0.0,
+            min_rating: Rating(-500.0),
+            max_drop: 100.0,
+        };
+        let test_ratings = [-200.0, 100.0, 500.0, 1000.0, 1500.0, 2000.0, 2400.0];
+        let base = Rating(1750.0);
+        let mut optprevadj = None;
+        for r in test_ratings.iter().map(|&x| Rating(x)) {
+            let adjw = sys.rating_adjustment(r, base, 0.0, 1.0);
+            let adjl = sys.rating_adjustment(r, base, 0.0, 0.0);
+            assert!(adjw > 0.0);
+            assert!(adjl < 0.0);
+            if let Some(prevadjw) = optprevadj {
+                assert!(adjw < prevadjw, "adjw !< prevadjw: {} !< {}", adjw, prevadjw);
+            }
+            optprevadj = Some(adjw);
+        }
+    }
+
+    // Consider players with a variety of ratings and check the effect of games
+    // on a single player with rating 1750.
+    #[test]
+    fn test_ratings_no_epsilon_generic_3() {
+        let sys = RatingSystem {
+            epsilon: 0.0,
+            min_rating: Rating(-500.0),
+            max_drop: 100.0,
+        };
+        let test_ratings = [-200.0, 100.0, 500.0, 1000.0, 1500.0, 2000.0, 2400.0];
+        let base = Rating(1750.0);
+        let mut optprevadj = None;
+        for r in test_ratings.iter().map(|&x| Rating(x)) {
+            let adjw = sys.rating_adjustment(base, r, 0.0, 1.0);
+            let adjl = sys.rating_adjustment(base, r, 0.0, 0.0);
+            assert!(adjw > 0.0);
+            assert!(adjl < 0.0);
+            if let Some((prevadjw, prevadjl)) = optprevadj {
+                assert!(adjw > prevadjw, "adjw !> prevadjw: {} !> {}", adjw, prevadjw);
+                assert!(adjl > prevadjl, "adjl !> prevadjl: {} !> {}", adjl, prevadjl);
+            }
+            optprevadj = Some((adjw, adjl));
+        }
+    }
+
+    fn adjust_rating(sys: &RatingSystem, r1: &mut Rating, r2: &mut Rating, handicap: f64, result: f64) {
+        let adj1 = sys.rating_adjustment(*r1, *r2, handicap, result);
+        let adj2 = sys.rating_adjustment(*r2, *r1, -handicap, 1.0 - result);
+        r1.0 += adj1;
+        r2.0 += adj2;
+    }
+
+    // Check convergence with 50% wins and 50% losses.
+    #[test]
+    fn test_ratings_convergence_1() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(-200.0);
+        let mut r2 = Rating(1500.0);
+        for _ in 0..50 {
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 - 50.0);
+        assert!(r1.0 < r2.0 + 50.0);
+    }
+
+    // Check convergence with 50% wins and 50% losses.
+    #[test]
+    fn test_ratings_convergence_2() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(1500.0);
+        let mut r2 = Rating(-200.0);
+        for _ in 0..50 {
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 - 50.0);
+        assert!(r1.0 < r2.0 + 50.0);
+    }
+
+    // Check convergence with 75% wins and 25% losses.
+    #[test]
+    fn test_ratings_convergence_3() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(-200.0);
+        let mut r2 = Rating(1500.0);
+        for _ in 0..25 {
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 + 50.0);
+        assert!(r1.0 < r2.0 + 250.0);
+    }
+
+    // Check convergence with 75% wins and 25% losses.
+    #[test]
+    fn test_ratings_convergence_4() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(1500.0);
+        let mut r2 = Rating(-200.0);
+        for _ in 0..25 {
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 + 50.0);
+        assert!(r1.0 < r2.0 + 250.0);
+    }
+
+    // Check convergence with 50% wins and 50% losses, 9 handicap.
+    #[test]
+    fn test_ratings_convergence_5() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(-200.0);
+        let mut r2 = Rating(1500.0);
+        for _ in 0..50 {
+            adjust_rating(&sys, &mut r1, &mut r2, 9.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 9.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 - 950.0);
+        assert!(r1.0 < r2.0 - 800.0);
+    }
+
+    // Check convergence with 50% wins and 50% losses, 9 handicap.
+    #[test]
+    fn test_ratings_convergence_6() {
+        let sys = RatingSystem::new();
+        let mut r1 = Rating(1200.0);
+        let mut r2 = Rating(1700.0);
+        for _ in 0..50 {
+            adjust_rating(&sys, &mut r1, &mut r2, 9.0, 0.0);
+            adjust_rating(&sys, &mut r1, &mut r2, 9.0, 1.0);
+        }
+        assert!(r1.0 > r2.0 - 950.0);
+        assert!(r1.0 < r2.0 - 800.0);
+    }
+
     #[test]
     fn test_rank_kyu() {
         assert_eq!(Rank(51.0).to_string(), "20k");
