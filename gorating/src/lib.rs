@@ -448,6 +448,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 - 50.0);
         assert!(r1.0 < r2.0 + 50.0);
     }
@@ -462,6 +464,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 - 50.0);
         assert!(r1.0 < r2.0 + 50.0);
     }
@@ -478,6 +482,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 + 50.0);
         assert!(r1.0 < r2.0 + 250.0);
     }
@@ -494,6 +500,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 + 50.0);
         assert!(r1.0 < r2.0 + 250.0);
     }
@@ -508,6 +516,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 9.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 9.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 - 950.0);
         assert!(r1.0 < r2.0 - 800.0);
     }
@@ -522,6 +532,8 @@ mod test {
             adjust_rating(&sys, &mut r1, &mut r2, 9.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 9.0, 1.0);
         }
+        dbg!(r1);
+        dbg!(r2);
         assert!(r1.0 > r2.0 - 950.0);
         assert!(r1.0 < r2.0 - 800.0);
     }
