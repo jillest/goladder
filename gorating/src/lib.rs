@@ -379,7 +379,12 @@ mod test {
             assert!(adjw > 0.0);
             assert!(adjl < 0.0);
             if let Some(prevadjw) = optprevadj {
-                assert!(adjw < prevadjw, "adjw !< prevadjw: {} !< {}", adjw, prevadjw);
+                assert!(
+                    adjw < prevadjw,
+                    "adjw !< prevadjw: {} !< {}",
+                    adjw,
+                    prevadjw
+                );
             }
             optprevadj = Some(adjw);
         }
@@ -403,14 +408,30 @@ mod test {
             assert!(adjw > 0.0);
             assert!(adjl < 0.0);
             if let Some((prevadjw, prevadjl)) = optprevadj {
-                assert!(adjw > prevadjw, "adjw !> prevadjw: {} !> {}", adjw, prevadjw);
-                assert!(adjl > prevadjl, "adjl !> prevadjl: {} !> {}", adjl, prevadjl);
+                assert!(
+                    adjw > prevadjw,
+                    "adjw !> prevadjw: {} !> {}",
+                    adjw,
+                    prevadjw
+                );
+                assert!(
+                    adjl > prevadjl,
+                    "adjl !> prevadjl: {} !> {}",
+                    adjl,
+                    prevadjl
+                );
             }
             optprevadj = Some((adjw, adjl));
         }
     }
 
-    fn adjust_rating(sys: &RatingSystem, r1: &mut Rating, r2: &mut Rating, handicap: f64, result: f64) {
+    fn adjust_rating(
+        sys: &RatingSystem,
+        r1: &mut Rating,
+        r2: &mut Rating,
+        handicap: f64,
+        result: f64,
+    ) {
         let adj1 = sys.rating_adjustment(*r1, *r2, handicap, result);
         let adj2 = sys.rating_adjustment(*r2, *r1, -handicap, 1.0 - result);
         r1.0 += adj1;
