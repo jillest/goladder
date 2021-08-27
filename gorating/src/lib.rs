@@ -89,16 +89,16 @@ impl Handicap {
 }
 
 pub struct RatingSystem {
-    pub epsilon: f64,
+    pub bonus_factor: f64,
     pub min_rating: Rating,
     /// Maximum rating points that a player can lose in one tournament
     pub max_drop: f64,
 }
 
 impl RatingSystem {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            epsilon: 0.016,
+            bonus_factor: 0.2,
             min_rating: Rating(-900.0),
             max_drop: 100.0,
         }
@@ -106,31 +106,12 @@ impl RatingSystem {
 
     /// Magnitude of the change
     fn con(&self, rating: f64) -> f64 {
-        const TABLE: [f64; 27] = [
-            116.0, 110.0, 105.0, 100.0, 95.0, 90.0, 85.0, 80.0, 75.0, 70.0, 65.0, 60.0, 55.0, 51.0,
-            47.0, 43.0, 39.0, 35.0, 31.0, 27.0, 24.0, 21.0, 18.0, 15.0, 13.0, 11.0, 10.0,
-        ];
-        if rating <= 100.0 {
-            TABLE[0]
-        } else if rating >= 2700.0 {
-            TABLE[26]
-        } else {
-            let h = (rating / 100.0).floor();
-            let frac = rating / 100.0 - h;
-            let idx = h as usize;
-            TABLE[idx - 1] * (1.0 - frac) + TABLE[idx] * frac
-        }
+        ((3300.0 - rating) / 200.0).powf(1.6)
     }
 
-    /// Factor to make ratings correspond to ranks (handicap stones)
-    fn a(&self, rating: f64) -> f64 {
-        if rating <= 100.0 {
-            200.0
-        } else if rating >= 2700.0 {
-            70.0
-        } else {
-            205.0 - rating / 20.0
-        }
+    /// Mapping function to make ratings correspond to ranks (handicap stones)
+    fn beta(&self, rating: f64) -> f64 {
+        -7.0 * (3300.0 - rating).ln()
     }
 
     pub fn rating_adjustment(
@@ -143,26 +124,18 @@ impl RatingSystem {
         assert!(result >= 0.0 && result <= 1.0);
         let Rating(rating) = rating;
         let Rating(other_rating) = other_rating;
-        let a = self.a(f64::min(rating, other_rating)
-            + if handicap != 0.0 {
-                100.0 * (handicap.abs() - 0.5)
-            } else {
-                0.0
-            });
-        let difference = other_rating - rating
-            + if handicap > 0.0 {
-                -100.0 * (handicap - 0.5)
-            } else if handicap < 0.0 {
-                100.0 * (-handicap - 0.5)
-            } else {
-                0.0
-            };
-        let expected_result = if difference >= 0.0 {
-            1.0 / ((difference / a).exp() + 1.0)
-        } else {
-            1.0 - 1.0 / ((-difference / a).exp() + 1.0)
-        };
-        self.con(rating) * (result - expected_result + 0.5 * self.epsilon)
+        let mut r1 = rating;
+        let mut r2 = other_rating;
+        // Increase black's rating depending on the handicap for the
+        // win probability calculation (but not for bonus and con).
+        if handicap > 0.0 {
+            r1 += 100.0 * (handicap - 0.5);
+        } else if handicap < 0.0 {
+            r2 += 100.0 * (-handicap - 0.5);
+        }
+        let expected_result = 1.0 / (1.0 + (self.beta(r2) - self.beta(r1)).exp());
+        let bonus = ((2300.0 - rating) / 80.0).exp().ln_1p() * self.bonus_factor;
+        self.con(rating) * (result - expected_result) + bonus
     }
 
     pub fn adjust_rating(&self, rating: Rating, adj: f64) -> Rating {
@@ -261,80 +234,67 @@ mod test {
     #[test]
     fn test_con() {
         let sys = RatingSystem::new();
-        assert_eq!(sys.con(0.0), 116.0);
-        assert_eq!(sys.con(100.0), 116.0);
-        assert_eq!(sys.con(150.0), 113.0);
-        assert_eq!(sys.con(200.0), 110.0);
-        assert_eq!(sys.con(1450.0), 49.0);
-        assert_eq!(sys.con(1425.0), 50.0);
-        assert_eq!(sys.con(1475.0), 48.0);
-        assert_eq!(sys.con(2700.0), 10.0);
-        assert_eq!(sys.con(2800.0), 10.0);
-    }
-
-    #[test]
-    fn test_a() {
-        let sys = RatingSystem::new();
-        assert_eq!(sys.a(0.0), 200.0);
-        assert_eq!(sys.a(100.0), 200.0);
-        assert_eq!(sys.a(200.0), 195.0);
-        assert_eq!(sys.a(1400.0), 135.0);
-        assert_eq!(sys.a(2700.0), 70.0);
-        assert_eq!(sys.a(2800.0), 70.0);
+        let con0 = sys.con(0.0);
+        assert!(con0 > 88.71);
+        assert!(con0 < 88.72);
+        let con1450 = sys.con(1450.0);
+        assert!(con1450 > 35.14);
+        assert!(con1450 < 35.15);
+        let con2800 = sys.con(2800.0);
+        assert!(con2800 > 4.33);
+        assert!(con2800 < 4.34);
+        assert_eq!(sys.con(3300.0), 0.0);
     }
 
     #[test]
     fn test_ratings_no_epsilon_1() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(100.0),
             max_drop: 100.0,
         };
-        assert_eq!(
-            sys.rating_adjustment(Rating(2400.0), Rating(2400.0), 0.0, 1.0),
-            7.5
-        );
-        assert_eq!(
-            sys.rating_adjustment(Rating(2400.0), Rating(2400.0), 0.0, 0.0),
-            -7.5
-        );
+        let adjw = sys.rating_adjustment(Rating(2400.0), Rating(2400.0), 0.0, 1.0);
+        let adjl = sys.rating_adjustment(Rating(2400.0), Rating(2400.0), 0.0, 0.0);
+        assert_eq!(adjl, -adjw);
+        assert!(adjw > 5.54);
+        assert!(adjw < 5.55);
     }
 
     #[test]
     fn test_ratings_no_epsilon_2() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(100.0),
             max_drop: 100.0,
         };
         assert_eq!(
             sys.rating_adjustment(Rating(320.0), Rating(400.0), 0.0, 1.0)
                 .round(),
-            63.0
+            41.0
         );
         assert_eq!(
             sys.rating_adjustment(Rating(400.0), Rating(320.0), 0.0, 0.0)
                 .round(),
-            -60.0
+            -39.0
         );
     }
 
     #[test]
     fn test_ratings_no_epsilon_handicap_5() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(100.0),
             max_drop: 100.0,
         };
         assert_eq!(
             sys.rating_adjustment(Rating(1850.0), Rating(2400.0), 5.0, 1.0)
                 .round(),
-            25.0
+            16.0
         );
         assert_eq!(
             sys.rating_adjustment(Rating(2400.0), Rating(1850.0), -5.0, 0.0)
                 .round(),
-            -11.0
+            -8.0
         );
     }
 
@@ -342,7 +302,7 @@ mod test {
     #[test]
     fn test_ratings_no_epsilon_generic_1() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(-500.0),
             max_drop: 100.0,
         };
@@ -366,7 +326,7 @@ mod test {
     #[test]
     fn test_ratings_no_epsilon_generic_2() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(-500.0),
             max_drop: 100.0,
         };
@@ -395,7 +355,7 @@ mod test {
     #[test]
     fn test_ratings_no_epsilon_generic_3() {
         let sys = RatingSystem {
-            epsilon: 0.0,
+            bonus_factor: 0.0,
             min_rating: Rating(-500.0),
             max_drop: 100.0,
         };
@@ -423,6 +383,30 @@ mod test {
             }
             optprevadj = Some((adjw, adjl));
         }
+    }
+
+    // A sample even game from T191116B
+    #[test]
+    fn test_ratings_egd_sample_1() {
+        let sys = RatingSystem::new();
+        let rw = Rating(1406.791);
+        let rb = Rating(1072.993);
+        let adjw = sys.rating_adjustment(rw, rb, 0.0, 0.0);
+        assert_eq!((adjw * 1000.0).round(), -25373.0);
+        let adjb = sys.rating_adjustment(rb, rw, 0.0, 1.0);
+        assert_eq!((adjb * 1000.0).round(), 38864.0);
+    }
+
+    // A sample handicap game from T191116B
+    #[test]
+    fn test_ratings_egd_sample_2() {
+        let sys = RatingSystem::new();
+        let rw = Rating(600.0);
+        let rb = Rating(39.888);
+        let adjw = sys.rating_adjustment(rw, rb, -3.0, 1.0);
+        assert_eq!((adjw * 1000.0).round(), 24739.0);
+        let adjb = sys.rating_adjustment(rb, rw, 3.0, 0.0);
+        assert_eq!((adjb * 1000.0).round(), -22052.0);
     }
 
     fn adjust_rating(
@@ -476,7 +460,7 @@ mod test {
         let sys = RatingSystem::new();
         let mut r1 = Rating(-200.0);
         let mut r2 = Rating(1500.0);
-        for _ in 0..25 {
+        for _ in 0..100 {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
@@ -494,7 +478,7 @@ mod test {
         let sys = RatingSystem::new();
         let mut r1 = Rating(1500.0);
         let mut r2 = Rating(-200.0);
-        for _ in 0..25 {
+        for _ in 0..100 {
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 0.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);
             adjust_rating(&sys, &mut r1, &mut r2, 0.0, 1.0);

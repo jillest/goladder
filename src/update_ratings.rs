@@ -7,11 +7,7 @@ use rusqlite::{Transaction, NO_PARAMS};
 
 use crate::models::GameResult;
 
-pub static RATINGS: RatingSystem = RatingSystem {
-    epsilon: 0.016,
-    min_rating: Rating(-400.0),
-    max_drop: 100.0,
-};
+pub static RATINGS: RatingSystem = RatingSystem::new();
 
 struct PendingRating {
     rating: Rating,
