@@ -4,13 +4,12 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use actix_web::multipart::MultipartItem;
+use actix_multipart::Multipart;
 use actix_web::{
-    http, server, App, Body, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Path,
-    Responder, State,
+    http, App, web::Form, HttpResponse, web::Path,
+    Responder, web::Data, HttpServer, web
 };
 use askama::Template;
-use futures::{future, Future, Stream};
 use rusqlite::types::ToSql;
 use rusqlite::{params, OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
@@ -114,7 +113,7 @@ fn guess_content_type(path: &str) -> &'static str {
     }
 }
 
-fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpResponse {
+fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> HttpResponse {
     let path = &params.0;
     match StaticAsset::get(path) {
         Some(content) => {
@@ -194,7 +193,7 @@ struct IndexTemplate {
 }
 impl CommonTemplate for IndexTemplate {}
 
-fn index(state: State<AppState>) -> Result<impl Responder> {
+async fn index(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let mut stmt =
         conn.prepare("SELECT id, CAST(date AS TEXT), extra FROM rounds ORDER BY date")?;
@@ -227,7 +226,7 @@ struct ScheduleRoundTemplate {
 }
 impl CommonTemplate for ScheduleRoundTemplate {}
 
-fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+async fn schedule_round((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<impl Responder> {
     let today = get_today();
     let round_id = params.0;
     let conn = state.dbpool.get()?;
@@ -616,7 +615,7 @@ fn save_round_extra(trans: &rusqlite::Transaction, id: i32, extra: &RoundExtra) 
 }
 
 fn schedule_round_run(
-    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+    (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let round_id = pathparams.0;
     let mut player_ids: Vec<i32> = params
@@ -660,7 +659,7 @@ fn schedule_round_run(
     }
     trans.commit()?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, format!("/schedule/{}", round_id))
+        .append_header((http::header::LOCATION, format!("/schedule/{}", round_id)))
         .finish())
 }
 
@@ -671,7 +670,7 @@ struct AddRoundTemplate {
 }
 impl CommonTemplate for AddRoundTemplate {}
 
-fn add_round(state: State<AppState>) -> Result<impl Responder> {
+async fn add_round(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let defaultdate: String = conn.query_row(
         "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
@@ -682,13 +681,13 @@ fn add_round(state: State<AppState>) -> Result<impl Responder> {
 }
 
 fn add_round_run(
-    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+    (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let date = &params.0["date"];
     let conn = state.dbpool.get()?;
     conn.execute("INSERT INTO rounds (date) VALUES (?1)", &[date])?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/")
+        .append_header((http::header::LOCATION, "/"))
         .finish())
 }
 
@@ -699,7 +698,7 @@ struct PlayersTemplate {
 }
 impl CommonTemplate for PlayersTemplate {}
 
-fn players(state: State<AppState>) -> Result<impl Responder> {
+async fn players(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let mut stmt = conn
         .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
@@ -723,7 +722,7 @@ struct EditPlayerTemplate {
 }
 impl CommonTemplate for EditPlayerTemplate {}
 
-fn add_player(_state: State<AppState>) -> impl Responder {
+async fn add_player(_state: Data<AppState>) -> impl Responder {
     EditPlayerTemplate {
         is_new: true,
         player: Player {
@@ -789,7 +788,7 @@ fn update_player_presence(
 }
 
 fn add_player_save(
-    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+    (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let name = &params.0["name"];
     let initialrating =
@@ -801,11 +800,11 @@ fn add_player_save(
         &[&name, &initialrating, &defaultschedule],
     )?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/players")
+        .append_header((http::header::LOCATION, "/players"))
         .finish())
 }
 
-fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+async fn edit_player((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<impl Responder> {
     let today = get_today();
     let player_id = params.0;
     let conn = state.dbpool.get()?;
@@ -849,7 +848,7 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl 
 }
 
 fn edit_player_save(
-    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+    (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let player_id = pathparams.0;
     let name = &params.0["name"];
@@ -866,16 +865,16 @@ fn edit_player_save(
     update_ratings::update_ratings(&trans)?;
     trans.commit()?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/players")
+        .append_header((http::header::LOCATION, "/players"))
         .finish())
 }
 
-fn export(state: State<AppState>) -> Result<HttpResponse> {
+fn export(state: Data<AppState>) -> Result<HttpResponse> {
     let conn = state.dbpool.get()?;
     data_exchange::export(&conn)
 }
 
-fn handle_import_item(
+/*fn handle_import_item(
     dbpool: Arc<db::Pool>,
     item: MultipartItem<actix_web::dev::Payload>,
 ) -> Box<dyn Future<Item = data_exchange::ImportTemplate, Error = Error>> {
@@ -895,8 +894,8 @@ fn handle_import_item(
     }
 }
 
-fn import(req: HttpRequest<AppState>) -> FutureResponse<data_exchange::ImportTemplate> {
-    let dbpool = req.state().dbpool.clone();
+fn import(req: HttpRequest) -> FutureResponse<data_exchange::ImportTemplate> {
+    let dbpool = req.app_data::<AppState>().dbpool.clone();
     Box::new(
         req.multipart()
             .map_err(actix_web::error::ErrorInternalServerError)
@@ -907,14 +906,14 @@ fn import(req: HttpRequest<AppState>) -> FutureResponse<data_exchange::ImportTem
             })
             .map_err(transform_error),
     )
-}
+}*/
 
-fn standings_page(state: State<AppState>) -> Result<impl Responder> {
+async fn standings_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     standings::standings(&conn)
 }
 
-fn presence_page(state: State<AppState>) -> Result<impl Responder> {
+async fn presence_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     presence::presence(&conn)
 }
@@ -933,42 +932,41 @@ fn main() -> Result<()> {
         let conn = dbpool.get()?;
         db::ensure_schema(&conn)?;
     }
-    server::new(move || {
-        App::with_state(AppState {
+    HttpServer::new(move || {
+        App::new().app_data(Data::new(AppState {
             dbpool: dbpool.clone(),
-        })
-        .route("/", http::Method::GET, handle_error(index))
-        .resource("/schedule/{round}", |r| {
+        }))
+        .route("/", web::get().to(index))
+        .service("/schedule/{round}", |r| {
             r.method(http::Method::GET)
                 .with(handle_error(schedule_round));
             r.method(http::Method::POST)
                 .with(handle_error(schedule_round_run))
         })
-        .resource("/add_round", |r| {
+        .service("/add_round", |r| {
             r.method(http::Method::GET).with(handle_error(add_round));
             r.method(http::Method::POST)
                 .with(handle_error(add_round_run))
         })
-        .route("/players", http::Method::GET, handle_error(players))
-        .resource("/add_player", |r| {
+        .route("/players", web::get().to(handle_error(players)))
+        .service("/add_player", |r| {
             r.method(http::Method::GET).with(add_player);
             r.method(http::Method::POST)
                 .with(handle_error(add_player_save))
         })
-        .resource("/player/{id}", |r| {
+        .service("/player/{id}", |r| {
             r.method(http::Method::GET).with(handle_error(edit_player));
             r.method(http::Method::POST)
                 .with(handle_error(edit_player_save))
         })
-        .route("/export", http::Method::GET, handle_error(export))
-        .route("/import", http::Method::POST, import)
+        .route("/export", web::get().to(handle_error(export)))
+        //.route("/import", web::post().to(import))
         .route(
             "/standings",
-            http::Method::GET,
-            handle_error(standings_page),
+            web::get().to(handle_error(standings_page)),
         )
-        .route("/presence", http::Method::GET, handle_error(presence_page))
-        .resource("/static/{path:.*}", |r| {
+        .route("/presence", web::get().to(handle_error(presence_page)))
+        .service("/static/{path:.*}", |r| {
             r.method(http::Method::GET).with(static_asset)
         })
     })

@@ -24,7 +24,7 @@ pub(crate) fn export(conn: &rusqlite::Connection) -> Result<HttpResponse> {
     let body: Body = s.into();
     Ok(HttpResponse::Ok()
         .content_type("application/json")
-        .header(
+        .append_header((
             http::header::CONTENT_DISPOSITION,
             http::header::ContentDisposition {
                 disposition: http::header::DispositionType::Attachment,
@@ -32,7 +32,7 @@ pub(crate) fn export(conn: &rusqlite::Connection) -> Result<HttpResponse> {
                     "goladder_export.json".to_owned(),
                 )],
             },
-        )
+        ))
         .body(body))
 }
 
