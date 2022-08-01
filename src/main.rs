@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -7,7 +6,7 @@ use std::sync::Arc;
 use actix_multipart::Multipart;
 use actix_web::{
     http, App, web::Form, HttpResponse, web::Path,
-    Responder, web::Data, HttpServer, web
+    Responder, ResponseError, web::Data, HttpServer, web
 };
 use askama::Template;
 use rusqlite::types::ToSql;
@@ -38,6 +37,7 @@ fn get_today() -> String {
 
 #[derive(Debug)]
 enum Error {
+    StdIO(std::io::Error),
     Database(rusqlite::Error),
     DatabasePool(r2d2::Error),
     BadParam(&'static str),
@@ -45,6 +45,12 @@ enum Error {
     Json(serde_json::Error),
     DataUpload(&'static str),
     ActixWeb(actix_web::Error),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::StdIO(e)
+    }
 }
 
 impl From<rusqlite::Error> for Error {
@@ -80,6 +86,7 @@ impl From<actix_web::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Error::StdIO(inner) => write!(f, "IO: {}", inner),
             Error::Database(inner) => write!(f, "Database: {}", inner),
             Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
             Error::BadParam(inner) => write!(f, "Invalid parameter: {}", inner),
@@ -89,6 +96,9 @@ impl std::fmt::Display for Error {
             Error::ActixWeb(inner) => write!(f, "{}", inner),
         }
     }
+}
+
+impl ResponseError for Error {
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -113,17 +123,13 @@ fn guess_content_type(path: &str) -> &'static str {
     }
 }
 
-fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> HttpResponse {
+async fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> HttpResponse {
     let path = &params.0;
     match StaticAsset::get(path) {
         Some(content) => {
-            let body: Body = match content {
-                Cow::Borrowed(bytes) => bytes.into(),
-                Cow::Owned(bytes) => bytes.into(),
-            };
             HttpResponse::Ok()
                 .content_type(guess_content_type(path))
-                .body(body)
+                .body(content.into_owned())
         }
         None => HttpResponse::NotFound().body("404 Not found"),
     }
@@ -149,6 +155,10 @@ impl CommonTemplate for ErrorTemplate {}
 
 fn transform_error(error: Error) -> actix_web::Error {
     let template = match error {
+        Error::StdIO(ref inner) => ErrorTemplate {
+            class: "IO",
+            message: inner.to_string(),
+        },
         Error::Database(ref inner) => ErrorTemplate {
             class: "Database",
             message: inner.to_string(),
@@ -614,7 +624,7 @@ fn save_round_extra(trans: &rusqlite::Transaction, id: i32, extra: &RoundExtra) 
     Ok(())
 }
 
-fn schedule_round_run(
+async fn schedule_round_run(
     (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let round_id = pathparams.0;
@@ -680,7 +690,7 @@ async fn add_round(state: Data<AppState>) -> Result<impl Responder> {
     Ok(AddRoundTemplate { defaultdate })
 }
 
-fn add_round_run(
+async fn add_round_run(
     (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let date = &params.0["date"];
@@ -787,7 +797,7 @@ fn update_player_presence(
     Ok(())
 }
 
-fn add_player_save(
+async fn add_player_save(
     (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let name = &params.0["name"];
@@ -847,7 +857,7 @@ async fn edit_player((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<
     })
 }
 
-fn edit_player_save(
+async fn edit_player_save(
     (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let player_id = pathparams.0;
@@ -869,7 +879,7 @@ fn edit_player_save(
         .finish())
 }
 
-fn export(state: Data<AppState>) -> Result<HttpResponse> {
+async fn export(state: Data<AppState>) -> Result<HttpResponse> {
     let conn = state.dbpool.get()?;
     data_exchange::export(&conn)
 }
@@ -922,7 +932,8 @@ fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Re
     move |x| f(x).map_err(transform_error)
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let dbpath = std::env::args_os().nth(1).unwrap_or_else(|| {
         eprintln!("Need a database pathname such as \"goladder.db\"");
         std::process::exit(2);
@@ -937,42 +948,24 @@ fn main() -> Result<()> {
             dbpool: dbpool.clone(),
         }))
         .route("/", web::get().to(index))
-        .service("/schedule/{round}", |r| {
-            r.method(http::Method::GET)
-                .with(handle_error(schedule_round));
-            r.method(http::Method::POST)
-                .with(handle_error(schedule_round_run))
-        })
-        .service("/add_round", |r| {
-            r.method(http::Method::GET).with(handle_error(add_round));
-            r.method(http::Method::POST)
-                .with(handle_error(add_round_run))
-        })
-        .route("/players", web::get().to(handle_error(players)))
-        .service("/add_player", |r| {
-            r.method(http::Method::GET).with(add_player);
-            r.method(http::Method::POST)
-                .with(handle_error(add_player_save))
-        })
-        .service("/player/{id}", |r| {
-            r.method(http::Method::GET).with(handle_error(edit_player));
-            r.method(http::Method::POST)
-                .with(handle_error(edit_player_save))
-        })
-        .route("/export", web::get().to(handle_error(export)))
+        .route("/schedule/{round}", web::get().to(schedule_round))
+        .route("/schedule/{round}", web::post().to(schedule_round_run))
+        .route("/add_round", web::get().to(add_round))
+        .route("/add_round", web::post().to(add_round_run))
+        .route("/players", web::get().to(players))
+        .route("/add_player", web::get().to(add_player))
+        .route("/add_player", web::post().to(add_player_save))
+        .route("/player/{id}", web::get().to(edit_player))
+        .route("/player/{id}", web::post().to(edit_player_save))
+        .route("/export", web::get().to(export))
         //.route("/import", web::post().to(import))
-        .route(
-            "/standings",
-            web::get().to(handle_error(standings_page)),
-        )
-        .route("/presence", web::get().to(handle_error(presence_page)))
-        .service("/static/{path:.*}", |r| {
-            r.method(http::Method::GET).with(static_asset)
-        })
+        .route("/standings", web::get().to(standings_page))
+        .route("/presence", web::get().to(presence_page))
+        .route("/static/{path:.*}", web::get().to(static_asset))
     })
     .bind("127.0.0.1:8080")
     .unwrap()
-    .run();
+    .run().await?;
     Ok(())
 }
 

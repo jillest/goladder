@@ -1,4 +1,4 @@
-use actix_web::{http, Body, HttpResponse};
+use actix_web::{http, HttpResponse};
 use askama::Template;
 use rusqlite::{params, NO_PARAMS};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,6 @@ struct Data {
 
 pub(crate) fn export(conn: &rusqlite::Connection) -> Result<HttpResponse> {
     let s = export_internal(conn)?;
-    let body: Body = s.into();
     Ok(HttpResponse::Ok()
         .content_type("application/json")
         .append_header((
@@ -33,7 +32,7 @@ pub(crate) fn export(conn: &rusqlite::Connection) -> Result<HttpResponse> {
                 )],
             },
         ))
-        .body(body))
+        .body(s))
 }
 
 fn export_internal(conn: &rusqlite::Connection) -> Result<String> {

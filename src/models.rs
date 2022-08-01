@@ -330,6 +330,11 @@ impl StandingsPlayer {
         PlaceDiff(index as isize - self.original_index as isize)
     }
 
+    /* workaround for askama weirdness */
+    pub fn place_diff_ref(&self, index: &usize) -> PlaceDiff {
+        self.place_diff(*index)
+    }
+
     pub fn rating_diff(&self) -> RatingDiff {
         RatingDiff(self.currentrating - self.initialrating)
     }
