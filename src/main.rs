@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use actix_multipart::Multipart;
 use actix_web::{
-    http, App, web::Form, HttpResponse, web::Path,
-    Responder, ResponseError, web::Data, HttpServer, web
+    http, web, web::Data, web::Form, web::Path, App, HttpResponse, HttpServer, Responder,
+    ResponseError,
 };
 use askama::Template;
 use rusqlite::types::ToSql;
@@ -98,8 +98,7 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl ResponseError for Error {
-}
+impl ResponseError for Error {}
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -126,11 +125,9 @@ fn guess_content_type(path: &str) -> &'static str {
 async fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> HttpResponse {
     let path = &params.0;
     match StaticAsset::get(path) {
-        Some(content) => {
-            HttpResponse::Ok()
-                .content_type(guess_content_type(path))
-                .body(content.into_owned())
-        }
+        Some(content) => HttpResponse::Ok()
+            .content_type(guess_content_type(path))
+            .body(content.into_owned()),
         None => HttpResponse::NotFound().body("404 Not found"),
     }
 }
@@ -944,28 +941,30 @@ async fn main() -> Result<()> {
         db::ensure_schema(&conn)?;
     }
     HttpServer::new(move || {
-        App::new().app_data(Data::new(AppState {
-            dbpool: dbpool.clone(),
-        }))
-        .route("/", web::get().to(index))
-        .route("/schedule/{round}", web::get().to(schedule_round))
-        .route("/schedule/{round}", web::post().to(schedule_round_run))
-        .route("/add_round", web::get().to(add_round))
-        .route("/add_round", web::post().to(add_round_run))
-        .route("/players", web::get().to(players))
-        .route("/add_player", web::get().to(add_player))
-        .route("/add_player", web::post().to(add_player_save))
-        .route("/player/{id}", web::get().to(edit_player))
-        .route("/player/{id}", web::post().to(edit_player_save))
-        .route("/export", web::get().to(export))
-        //.route("/import", web::post().to(import))
-        .route("/standings", web::get().to(standings_page))
-        .route("/presence", web::get().to(presence_page))
-        .route("/static/{path:.*}", web::get().to(static_asset))
+        App::new()
+            .app_data(Data::new(AppState {
+                dbpool: dbpool.clone(),
+            }))
+            .route("/", web::get().to(index))
+            .route("/schedule/{round}", web::get().to(schedule_round))
+            .route("/schedule/{round}", web::post().to(schedule_round_run))
+            .route("/add_round", web::get().to(add_round))
+            .route("/add_round", web::post().to(add_round_run))
+            .route("/players", web::get().to(players))
+            .route("/add_player", web::get().to(add_player))
+            .route("/add_player", web::post().to(add_player_save))
+            .route("/player/{id}", web::get().to(edit_player))
+            .route("/player/{id}", web::post().to(edit_player_save))
+            .route("/export", web::get().to(export))
+            //.route("/import", web::post().to(import))
+            .route("/standings", web::get().to(standings_page))
+            .route("/presence", web::get().to(presence_page))
+            .route("/static/{path:.*}", web::get().to(static_asset))
     })
     .bind("127.0.0.1:8080")
     .unwrap()
-    .run().await?;
+    .run()
+    .await?;
     Ok(())
 }
 
