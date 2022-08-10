@@ -396,12 +396,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "futures"
-version = "0.1.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49e7653e374fe0d0c12de4250f0bdb60680b8c80eed558c5c7538eec9c89e21b"
-
-[[package]]
 name = "futures-core"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,6 +423,7 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "pin-utils",
+ "slab",
 ]
 
 [[package]]
@@ -460,7 +455,7 @@ dependencies = [
  "actix-web",
  "askama",
  "askama_actix",
- "futures",
+ "futures-util",
  "gorating",
  "r2d2",
  "r2d2_sqlite",

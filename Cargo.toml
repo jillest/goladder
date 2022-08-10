@@ -5,7 +5,7 @@ authors = ["Jilles Tjoelker <jilles@stack.nl>"]
 edition = "2018"
 
 [dependencies]
-futures = "0.1"
+futures-util = { version = "0.3.17", default-features = false, features = ["std"] }
 actix-web = { version = "4.1", default-features = false }
 actix-multipart = "0.4"
 askama_actix = "0.13"

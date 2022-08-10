@@ -9,6 +9,7 @@ use actix_web::{
     ResponseError,
 };
 use askama::Template;
+use futures_util::TryStreamExt as _;
 use rusqlite::types::ToSql;
 use rusqlite::{params, OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
@@ -45,6 +46,7 @@ enum Error {
     Json(serde_json::Error),
     DataUpload(&'static str),
     ActixWeb(actix_web::Error),
+    ActixMultipart(actix_multipart::MultipartError),
 }
 
 impl From<std::io::Error> for Error {
@@ -83,6 +85,12 @@ impl From<actix_web::Error> for Error {
     }
 }
 
+impl From<actix_multipart::MultipartError> for Error {
+    fn from(e: actix_multipart::MultipartError) -> Self {
+        Error::ActixMultipart(e)
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -94,6 +102,7 @@ impl std::fmt::Display for Error {
             Error::Json(inner) => write!(f, "JSON: {}", inner),
             Error::DataUpload(inner) => write!(f, "Data upload: {}", inner),
             Error::ActixWeb(inner) => write!(f, "{}", inner),
+            Error::ActixMultipart(inner) => write!(f, "{}", inner),
         }
     }
 }
@@ -181,6 +190,7 @@ fn transform_error(error: Error) -> actix_web::Error {
             message: inner.to_string(),
         },
         Error::ActixWeb(inner) => return inner,
+        Error::ActixMultipart(inner) => return inner.into(),
     };
     let resp = match template.render() {
         Ok(html) => HttpResponse::InternalServerError()
@@ -881,39 +891,29 @@ async fn export(state: Data<AppState>) -> Result<HttpResponse> {
     data_exchange::export(&conn)
 }
 
-/*fn handle_import_item(
-    dbpool: Arc<db::Pool>,
-    item: MultipartItem<actix_web::dev::Payload>,
-) -> Box<dyn Future<Item = data_exchange::ImportTemplate, Error = Error>> {
-    match item {
-        MultipartItem::Field(field) => Box::new(
-            field
-                .map_err(actix_web::error::ErrorInternalServerError)
-                .map_err(Into::<Error>::into)
-                .concat2()
-                .and_then(move |bytes| {
-                    let mut conn = dbpool.get()?;
-                    let s = std::str::from_utf8(&bytes)?;
-                    data_exchange::import(&mut conn, s)
-                }),
-        ),
-        MultipartItem::Nested(_) => Box::new(future::err(Error::DataUpload("nested multipart"))),
+async fn get_bytes(mut field: actix_multipart::Field) -> Result<Vec<u8>> {
+    const MAX_MULTIPART_FILE: usize = 1024 * 1024;
+    let mut result = Vec::new();
+    while let Some(chunk) = field.try_next().await? {
+        if result.len().saturating_add(chunk.len()) > MAX_MULTIPART_FILE {
+            return Err(Error::DataUpload("file too large"));
+        }
+        result.extend(&chunk);
     }
+    Ok(result)
 }
 
-fn import(req: HttpRequest) -> FutureResponse<data_exchange::ImportTemplate> {
-    let dbpool = req.app_data::<AppState>().dbpool.clone();
-    Box::new(
-        req.multipart()
-            .map_err(actix_web::error::ErrorInternalServerError)
-            .map_err(Into::<Error>::into)
-            .and_then(move |item| handle_import_item(dbpool.clone(), item))
-            .fold(data_exchange::ImportTemplate::zero(), |acc, x| {
-                future::ok::<_, Error>(acc + x)
-            })
-            .map_err(transform_error),
-    )
-}*/
+async fn import((state, mut payload): (Data<AppState>, Multipart)) -> Result<impl Responder> {
+    let mut result = data_exchange::ImportTemplate::zero();
+    let mut conn = state.dbpool.get()?;
+    while let Some(field) = payload.try_next().await? {
+        let bytes = get_bytes(field).await?;
+        let s = std::str::from_utf8(&bytes)?;
+        let x = data_exchange::import(&mut conn, s)?;
+        result = result + x;
+    }
+    Ok(result)
+}
 
 async fn standings_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
@@ -956,7 +956,7 @@ async fn main() -> Result<()> {
             .route("/player/{id}", web::get().to(edit_player))
             .route("/player/{id}", web::post().to(edit_player_save))
             .route("/export", web::get().to(export))
-            //.route("/import", web::post().to(import))
+            .route("/import", web::post().to(import))
             .route("/standings", web::get().to(standings_page))
             .route("/presence", web::get().to(presence_page))
             .route("/static/{path:.*}", web::get().to(static_asset))
