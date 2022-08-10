@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use actix_multipart::Multipart;
 use actix_web::{
-    http, web, web::Data, web::Form, web::Path, App, HttpResponse, HttpServer, Responder,
-    ResponseError,
+    body::BoxBody, http, web, web::Data, web::Form, web::Path, App, HttpResponse, HttpServer,
+    Responder, ResponseError,
 };
 use askama::Template;
 use futures_util::TryStreamExt as _;
@@ -107,8 +107,6 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl ResponseError for Error {}
-
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(RustEmbed)]
@@ -159,48 +157,49 @@ struct ErrorTemplate {
 }
 impl CommonTemplate for ErrorTemplate {}
 
-fn transform_error(error: Error) -> actix_web::Error {
-    let template = match error {
-        Error::StdIO(ref inner) => ErrorTemplate {
-            class: "IO",
-            message: inner.to_string(),
-        },
-        Error::Database(ref inner) => ErrorTemplate {
-            class: "Database",
-            message: inner.to_string(),
-        },
-        Error::DatabasePool(ref inner) => ErrorTemplate {
-            class: "Database pool",
-            message: inner.to_string(),
-        },
-        Error::BadParam(inner) => ErrorTemplate {
-            class: "Bad parameter",
-            message: inner.to_string(),
-        },
-        Error::Inconsistency(inner) => ErrorTemplate {
-            class: "Inconsistency",
-            message: inner.to_string(),
-        },
-        Error::Json(ref inner) => ErrorTemplate {
-            class: "JSON",
-            message: inner.to_string(),
-        },
-        Error::DataUpload(inner) => ErrorTemplate {
-            class: "Data upload",
-            message: inner.to_string(),
-        },
-        Error::ActixWeb(inner) => return inner,
-        Error::ActixMultipart(inner) => return inner.into(),
-    };
-    let resp = match template.render() {
-        Ok(html) => HttpResponse::InternalServerError()
-            .content_type("text/html")
-            .body(html),
-        Err(_) => HttpResponse::InternalServerError()
-            .content_type("text/plain")
-            .body("An error occurred, and another error occurred while trying to display it."),
-    };
-    actix_web::error::InternalError::from_response(error, resp).into()
+impl ResponseError for Error {
+    fn error_response(&self) -> HttpResponse<BoxBody> {
+        let template = match self {
+            Error::StdIO(inner) => ErrorTemplate {
+                class: "IO",
+                message: inner.to_string(),
+            },
+            Error::Database(inner) => ErrorTemplate {
+                class: "Database",
+                message: inner.to_string(),
+            },
+            Error::DatabasePool(inner) => ErrorTemplate {
+                class: "Database pool",
+                message: inner.to_string(),
+            },
+            Error::BadParam(inner) => ErrorTemplate {
+                class: "Bad parameter",
+                message: inner.to_string(),
+            },
+            Error::Inconsistency(inner) => ErrorTemplate {
+                class: "Inconsistency",
+                message: inner.to_string(),
+            },
+            Error::Json(inner) => ErrorTemplate {
+                class: "JSON",
+                message: inner.to_string(),
+            },
+            Error::DataUpload(inner) => ErrorTemplate {
+                class: "Data upload",
+                message: inner.to_string(),
+            },
+            Error::ActixWeb(inner) => return inner.error_response(),
+            Error::ActixMultipart(inner) => return inner.error_response(),
+        };
+        match template.render() {
+            Ok(html) => HttpResponse::InternalServerError()
+                .content_type("text/html")
+                .body(html),
+            Err(_) => HttpResponse::InternalServerError()
+                .content_type("text/plain")
+                .body("An error occurred, and another error occurred while trying to display it."),
+        }
+    }
 }
 
 #[derive(Template)]
@@ -923,10 +922,6 @@ async fn standings_page(state: Data<AppState>) -> Result<impl Responder> {
 async fn presence_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     presence::presence(&conn)
-}
-
-fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
-    move |x| f(x).map_err(transform_error)
 }
 
 #[tokio::main]
