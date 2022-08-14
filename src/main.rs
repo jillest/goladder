@@ -1,16 +1,15 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use actix_web::multipart::MultipartItem;
+use actix_multipart::Multipart;
 use actix_web::{
-    http, server, App, Body, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Path,
-    Responder, State,
+    body::BoxBody, http, web, web::Data, web::Form, web::Path, App, HttpResponse, HttpServer,
+    Responder, ResponseError,
 };
 use askama::Template;
-use futures::{future, Future, Stream};
+use futures_util::TryStreamExt as _;
 use rusqlite::types::ToSql;
 use rusqlite::{params, OptionalExtension, NO_PARAMS};
 use rust_embed::RustEmbed;
@@ -39,6 +38,7 @@ fn get_today() -> String {
 
 #[derive(Debug)]
 enum Error {
+    StdIO(std::io::Error),
     Database(rusqlite::Error),
     DatabasePool(r2d2::Error),
     BadParam(&'static str),
@@ -46,6 +46,13 @@ enum Error {
     Json(serde_json::Error),
     DataUpload(&'static str),
     ActixWeb(actix_web::Error),
+    ActixMultipart(actix_multipart::MultipartError),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::StdIO(e)
+    }
 }
 
 impl From<rusqlite::Error> for Error {
@@ -78,9 +85,16 @@ impl From<actix_web::Error> for Error {
     }
 }
 
+impl From<actix_multipart::MultipartError> for Error {
+    fn from(e: actix_multipart::MultipartError) -> Self {
+        Error::ActixMultipart(e)
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Error::StdIO(inner) => write!(f, "IO: {}", inner),
             Error::Database(inner) => write!(f, "Database: {}", inner),
             Error::DatabasePool(inner) => write!(f, "Database pool: {}", inner),
             Error::BadParam(inner) => write!(f, "Invalid parameter: {}", inner),
@@ -88,6 +102,7 @@ impl std::fmt::Display for Error {
             Error::Json(inner) => write!(f, "JSON: {}", inner),
             Error::DataUpload(inner) => write!(f, "Data upload: {}", inner),
             Error::ActixWeb(inner) => write!(f, "{}", inner),
+            Error::ActixMultipart(inner) => write!(f, "{}", inner),
         }
     }
 }
@@ -114,18 +129,12 @@ fn guess_content_type(path: &str) -> &'static str {
     }
 }
 
-fn static_asset((params, _state): (Path<(String,)>, State<AppState>)) -> HttpResponse {
+async fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> HttpResponse {
     let path = &params.0;
     match StaticAsset::get(path) {
-        Some(content) => {
-            let body: Body = match content {
-                Cow::Borrowed(bytes) => bytes.into(),
-                Cow::Owned(bytes) => bytes.into(),
-            };
-            HttpResponse::Ok()
-                .content_type(guess_content_type(path))
-                .body(body)
-        }
+        Some(content) => HttpResponse::Ok()
+            .content_type(guess_content_type(path))
+            .body(content.into_owned()),
         None => HttpResponse::NotFound().body("404 Not found"),
     }
 }
@@ -148,43 +157,49 @@ struct ErrorTemplate {
 }
 impl CommonTemplate for ErrorTemplate {}
 
-fn transform_error(error: Error) -> actix_web::Error {
-    let template = match error {
-        Error::Database(ref inner) => ErrorTemplate {
-            class: "Database",
-            message: inner.to_string(),
-        },
-        Error::DatabasePool(ref inner) => ErrorTemplate {
-            class: "Database pool",
-            message: inner.to_string(),
-        },
-        Error::BadParam(inner) => ErrorTemplate {
-            class: "Bad parameter",
-            message: inner.to_string(),
-        },
-        Error::Inconsistency(inner) => ErrorTemplate {
-            class: "Inconsistency",
-            message: inner.to_string(),
-        },
-        Error::Json(ref inner) => ErrorTemplate {
-            class: "JSON",
-            message: inner.to_string(),
-        },
-        Error::DataUpload(inner) => ErrorTemplate {
-            class: "Data upload",
-            message: inner.to_string(),
-        },
-        Error::ActixWeb(inner) => return inner,
-    };
-    let resp = match template.render() {
-        Ok(html) => HttpResponse::InternalServerError()
-            .content_type("text/html")
-            .body(html),
-        Err(_) => HttpResponse::InternalServerError()
-            .content_type("text/plain")
-            .body("An error occurred, and another error occurred while trying to display it."),
-    };
-    actix_web::error::InternalError::from_response(error, resp).into()
+impl ResponseError for Error {
+    fn error_response(&self) -> HttpResponse<BoxBody> {
+        let template = match self {
+            Error::StdIO(inner) => ErrorTemplate {
+                class: "IO",
+                message: inner.to_string(),
+            },
+            Error::Database(inner) => ErrorTemplate {
+                class: "Database",
+                message: inner.to_string(),
+            },
+            Error::DatabasePool(inner) => ErrorTemplate {
+                class: "Database pool",
+                message: inner.to_string(),
+            },
+            Error::BadParam(inner) => ErrorTemplate {
+                class: "Bad parameter",
+                message: inner.to_string(),
+            },
+            Error::Inconsistency(inner) => ErrorTemplate {
+                class: "Inconsistency",
+                message: inner.to_string(),
+            },
+            Error::Json(inner) => ErrorTemplate {
+                class: "JSON",
+                message: inner.to_string(),
+            },
+            Error::DataUpload(inner) => ErrorTemplate {
+                class: "Data upload",
+                message: inner.to_string(),
+            },
+            Error::ActixWeb(inner) => return inner.error_response(),
+            Error::ActixMultipart(inner) => return inner.error_response(),
+        };
+        match template.render() {
+            Ok(html) => HttpResponse::InternalServerError()
+                .content_type("text/html")
+                .body(html),
+            Err(_) => HttpResponse::InternalServerError()
+                .content_type("text/plain")
+                .body("An error occurred, and another error occurred while trying to display it."),
+        }
+    }
 }
 
 #[derive(Template)]
@@ -194,7 +209,7 @@ struct IndexTemplate {
 }
 impl CommonTemplate for IndexTemplate {}
 
-fn index(state: State<AppState>) -> Result<impl Responder> {
+async fn index(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let mut stmt =
         conn.prepare("SELECT id, CAST(date AS TEXT), extra FROM rounds ORDER BY date")?;
@@ -227,7 +242,7 @@ struct ScheduleRoundTemplate {
 }
 impl CommonTemplate for ScheduleRoundTemplate {}
 
-fn schedule_round((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+async fn schedule_round((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<impl Responder> {
     let today = get_today();
     let round_id = params.0;
     let conn = state.dbpool.get()?;
@@ -615,8 +630,8 @@ fn save_round_extra(trans: &rusqlite::Transaction, id: i32, extra: &RoundExtra) 
     Ok(())
 }
 
-fn schedule_round_run(
-    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+async fn schedule_round_run(
+    (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let round_id = pathparams.0;
     let mut player_ids: Vec<i32> = params
@@ -660,7 +675,7 @@ fn schedule_round_run(
     }
     trans.commit()?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, format!("/schedule/{}", round_id))
+        .append_header((http::header::LOCATION, format!("/schedule/{}", round_id)))
         .finish())
 }
 
@@ -671,7 +686,7 @@ struct AddRoundTemplate {
 }
 impl CommonTemplate for AddRoundTemplate {}
 
-fn add_round(state: State<AppState>) -> Result<impl Responder> {
+async fn add_round(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let defaultdate: String = conn.query_row(
         "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
@@ -681,14 +696,14 @@ fn add_round(state: State<AppState>) -> Result<impl Responder> {
     Ok(AddRoundTemplate { defaultdate })
 }
 
-fn add_round_run(
-    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+async fn add_round_run(
+    (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let date = &params.0["date"];
     let conn = state.dbpool.get()?;
     conn.execute("INSERT INTO rounds (date) VALUES (?1)", &[date])?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/")
+        .append_header((http::header::LOCATION, "/"))
         .finish())
 }
 
@@ -699,7 +714,7 @@ struct PlayersTemplate {
 }
 impl CommonTemplate for PlayersTemplate {}
 
-fn players(state: State<AppState>) -> Result<impl Responder> {
+async fn players(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let mut stmt = conn
         .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
@@ -723,7 +738,7 @@ struct EditPlayerTemplate {
 }
 impl CommonTemplate for EditPlayerTemplate {}
 
-fn add_player(_state: State<AppState>) -> impl Responder {
+async fn add_player(_state: Data<AppState>) -> impl Responder {
     EditPlayerTemplate {
         is_new: true,
         player: Player {
@@ -788,8 +803,8 @@ fn update_player_presence(
     Ok(())
 }
 
-fn add_player_save(
-    (state, params): (State<AppState>, Form<HashMap<String, String>>),
+async fn add_player_save(
+    (state, params): (Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let name = &params.0["name"];
     let initialrating =
@@ -801,11 +816,11 @@ fn add_player_save(
         &[&name, &initialrating, &defaultschedule],
     )?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/players")
+        .append_header((http::header::LOCATION, "/players"))
         .finish())
 }
 
-fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl Responder> {
+async fn edit_player((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<impl Responder> {
     let today = get_today();
     let player_id = params.0;
     let conn = state.dbpool.get()?;
@@ -848,8 +863,8 @@ fn edit_player((params, state): (Path<(i32,)>, State<AppState>)) -> Result<impl 
     })
 }
 
-fn edit_player_save(
-    (pathparams, state, params): (Path<(i32,)>, State<AppState>, Form<HashMap<String, String>>),
+async fn edit_player_save(
+    (pathparams, state, params): (Path<(i32,)>, Data<AppState>, Form<HashMap<String, String>>),
 ) -> Result<HttpResponse> {
     let player_id = pathparams.0;
     let name = &params.0["name"];
@@ -866,64 +881,51 @@ fn edit_player_save(
     update_ratings::update_ratings(&trans)?;
     trans.commit()?;
     Ok(HttpResponse::Found()
-        .header(http::header::LOCATION, "/players")
+        .append_header((http::header::LOCATION, "/players"))
         .finish())
 }
 
-fn export(state: State<AppState>) -> Result<HttpResponse> {
+async fn export(state: Data<AppState>) -> Result<HttpResponse> {
     let conn = state.dbpool.get()?;
     data_exchange::export(&conn)
 }
 
-fn handle_import_item(
-    dbpool: Arc<db::Pool>,
-    item: MultipartItem<actix_web::dev::Payload>,
-) -> Box<dyn Future<Item = data_exchange::ImportTemplate, Error = Error>> {
-    match item {
-        MultipartItem::Field(field) => Box::new(
-            field
-                .map_err(actix_web::error::ErrorInternalServerError)
-                .map_err(Into::<Error>::into)
-                .concat2()
-                .and_then(move |bytes| {
-                    let mut conn = dbpool.get()?;
-                    let s = std::str::from_utf8(&bytes)?;
-                    data_exchange::import(&mut conn, s)
-                }),
-        ),
-        MultipartItem::Nested(_) => Box::new(future::err(Error::DataUpload("nested multipart"))),
+async fn get_bytes(mut field: actix_multipart::Field) -> Result<Vec<u8>> {
+    const MAX_MULTIPART_FILE: usize = 1024 * 1024;
+    let mut result = Vec::new();
+    while let Some(chunk) = field.try_next().await? {
+        if result.len().saturating_add(chunk.len()) > MAX_MULTIPART_FILE {
+            return Err(Error::DataUpload("file too large"));
+        }
+        result.extend(&chunk);
     }
+    Ok(result)
 }
 
-fn import(req: HttpRequest<AppState>) -> FutureResponse<data_exchange::ImportTemplate> {
-    let dbpool = req.state().dbpool.clone();
-    Box::new(
-        req.multipart()
-            .map_err(actix_web::error::ErrorInternalServerError)
-            .map_err(Into::<Error>::into)
-            .and_then(move |item| handle_import_item(dbpool.clone(), item))
-            .fold(data_exchange::ImportTemplate::zero(), |acc, x| {
-                future::ok::<_, Error>(acc + x)
-            })
-            .map_err(transform_error),
-    )
+async fn import((state, mut payload): (Data<AppState>, Multipart)) -> Result<impl Responder> {
+    let mut result = data_exchange::ImportTemplate::zero();
+    let mut conn = state.dbpool.get()?;
+    while let Some(field) = payload.try_next().await? {
+        let bytes = get_bytes(field).await?;
+        let s = std::str::from_utf8(&bytes)?;
+        let x = data_exchange::import(&mut conn, s)?;
+        result = result + x;
+    }
+    Ok(result)
 }
 
-fn standings_page(state: State<AppState>) -> Result<impl Responder> {
+async fn standings_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     standings::standings(&conn)
 }
 
-fn presence_page(state: State<AppState>) -> Result<impl Responder> {
+async fn presence_page(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     presence::presence(&conn)
 }
 
-fn handle_error<T, U>(f: impl Fn(T) -> Result<U>) -> impl Fn(T) -> actix_web::Result<U> {
-    move |x| f(x).map_err(transform_error)
-}
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let dbpath = std::env::args_os().nth(1).unwrap_or_else(|| {
         eprintln!("Need a database pathname such as \"goladder.db\"");
         std::process::exit(2);
@@ -933,48 +935,31 @@ fn main() -> Result<()> {
         let conn = dbpool.get()?;
         db::ensure_schema(&conn)?;
     }
-    server::new(move || {
-        App::with_state(AppState {
-            dbpool: dbpool.clone(),
-        })
-        .route("/", http::Method::GET, handle_error(index))
-        .resource("/schedule/{round}", |r| {
-            r.method(http::Method::GET)
-                .with(handle_error(schedule_round));
-            r.method(http::Method::POST)
-                .with(handle_error(schedule_round_run))
-        })
-        .resource("/add_round", |r| {
-            r.method(http::Method::GET).with(handle_error(add_round));
-            r.method(http::Method::POST)
-                .with(handle_error(add_round_run))
-        })
-        .route("/players", http::Method::GET, handle_error(players))
-        .resource("/add_player", |r| {
-            r.method(http::Method::GET).with(add_player);
-            r.method(http::Method::POST)
-                .with(handle_error(add_player_save))
-        })
-        .resource("/player/{id}", |r| {
-            r.method(http::Method::GET).with(handle_error(edit_player));
-            r.method(http::Method::POST)
-                .with(handle_error(edit_player_save))
-        })
-        .route("/export", http::Method::GET, handle_error(export))
-        .route("/import", http::Method::POST, import)
-        .route(
-            "/standings",
-            http::Method::GET,
-            handle_error(standings_page),
-        )
-        .route("/presence", http::Method::GET, handle_error(presence_page))
-        .resource("/static/{path:.*}", |r| {
-            r.method(http::Method::GET).with(static_asset)
-        })
+    HttpServer::new(move || {
+        App::new()
+            .app_data(Data::new(AppState {
+                dbpool: dbpool.clone(),
+            }))
+            .route("/", web::get().to(index))
+            .route("/schedule/{round}", web::get().to(schedule_round))
+            .route("/schedule/{round}", web::post().to(schedule_round_run))
+            .route("/add_round", web::get().to(add_round))
+            .route("/add_round", web::post().to(add_round_run))
+            .route("/players", web::get().to(players))
+            .route("/add_player", web::get().to(add_player))
+            .route("/add_player", web::post().to(add_player_save))
+            .route("/player/{id}", web::get().to(edit_player))
+            .route("/player/{id}", web::post().to(edit_player_save))
+            .route("/export", web::get().to(export))
+            .route("/import", web::post().to(import))
+            .route("/standings", web::get().to(standings_page))
+            .route("/presence", web::get().to(presence_page))
+            .route("/static/{path:.*}", web::get().to(static_asset))
     })
     .bind("127.0.0.1:8080")
     .unwrap()
-    .run();
+    .run()
+    .await?;
     Ok(())
 }
 
