@@ -134,7 +134,7 @@ async fn static_asset((params, _state): (Path<(String,)>, Data<AppState>)) -> Ht
     match StaticAsset::get(path) {
         Some(content) => HttpResponse::Ok()
             .content_type(guess_content_type(path))
-            .body(content.into_owned()),
+            .body(content.data.into_owned()),
         None => HttpResponse::NotFound().body("404 Not found"),
     }
 }
