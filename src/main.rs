@@ -11,7 +11,7 @@ use actix_web::{
 use askama::Template;
 use futures_util::TryStreamExt as _;
 use rusqlite::types::ToSql;
-use rusqlite::{params, OptionalExtension, NO_PARAMS};
+use rusqlite::{params, OptionalExtension};
 use rust_embed::RustEmbed;
 
 use gorating::{Handicap, Rating};
@@ -214,7 +214,7 @@ async fn index(state: Data<AppState>) -> Result<impl Responder> {
     let mut stmt =
         conn.prepare("SELECT id, CAST(date AS TEXT), extra FROM rounds ORDER BY date")?;
     let rounds: Vec<Round> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let id: i32 = row.get(0)?;
             let date: String = row.get(1)?;
             let extra: RoundExtra = row.get(2)?;
@@ -331,7 +331,7 @@ async fn schedule_round((params, state): (Path<(i32,)>, Data<AppState>)) -> Resu
     let mut stmt = conn
         .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
     let all_players: Vec<Player> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let player_id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
             let rating = Rating::new(row.get(2)?);
@@ -403,7 +403,7 @@ fn pair_players(trans: &rusqlite::Transaction, round_id: i32, player_ids: &[i32]
             black: i32,
         }
         let rows: Vec<GameRow> = stmt
-            .query_map(NO_PARAMS, |row| {
+            .query_map([], |row| {
                 Ok(GameRow {
                     white: row.get(0)?,
                     black: row.get(1)?,
@@ -433,7 +433,7 @@ fn pair_players(trans: &rusqlite::Transaction, round_id: i32, player_ids: &[i32]
     {
         let mut stmt = trans.prepare("SELECT id, currentrating FROM players ORDER BY id")?;
         ratings = stmt
-            .query_map(NO_PARAMS, |row| {
+            .query_map([], |row| {
                 let id: i32 = row.get(0)?;
                 let rating: f64 = row.get(1)?;
                 Ok(player_ids.binary_search(&id).ok().map(|_| rating))
@@ -690,7 +690,7 @@ async fn add_round(state: Data<AppState>) -> Result<impl Responder> {
     let conn = state.dbpool.get()?;
     let defaultdate: String = conn.query_row(
         "SELECT COALESCE(date(MAX(rounds.date), '+7 days'), date('now')) FROM rounds",
-        NO_PARAMS,
+        [],
         |row| row.get(0),
     )?;
     Ok(AddRoundTemplate { defaultdate })
@@ -719,7 +719,7 @@ async fn players(state: Data<AppState>) -> Result<impl Responder> {
     let mut stmt = conn
         .prepare("SELECT id, name, currentrating FROM players ORDER BY currentrating DESC, id")?;
     let players: Vec<Player> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
             let rating = Rating::new(row.get(2)?);

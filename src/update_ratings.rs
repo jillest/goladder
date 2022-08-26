@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use gorating::{Rating, RatingSystem};
 use rusqlite::types::ToSql;
-use rusqlite::{Transaction, NO_PARAMS};
+use rusqlite::Transaction;
 
 use crate::models::GameResult;
 
@@ -33,7 +33,7 @@ fn apply_pending_changes(ratings: &mut HashMap<i32, PendingRating>) {
 pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
     let mut stmt = trans.prepare("SELECT id, initialrating FROM players")?;
     let mut ratings: HashMap<i32, PendingRating> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             Ok((row.get(0)?, PendingRating::new(row.get(1)?)))
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -41,7 +41,7 @@ pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
     let mut stmt = trans.prepare(
         "SELECT g.white, g.black, g.handicap, g.boardsize, g.result, r.id FROM games g, rounds r WHERE g.played = r.id AND g.result IS NOT NULL ORDER BY r.date"
     )?;
-    stmt.query_map(NO_PARAMS, |row| {
+    stmt.query_map([], |row| {
         let white: i32 = row.get(0)?;
         let black: i32 = row.get(1)?;
         let handicap: f64 = row.get(2)?;

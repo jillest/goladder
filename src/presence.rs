@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use actix_web::Responder;
 use askama::Template;
-use rusqlite::{params, NO_PARAMS};
+use rusqlite::params;
 
 use crate::models::{PresencePlayer, PresencePlayerRound, Round, RoundsByMonth};
 use crate::{get_today, CommonTemplate, Error, Result};
@@ -49,7 +49,7 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
     let mut stmt = conn
         .prepare("SELECT id, name, defaultschedule FROM players ORDER BY currentrating DESC, id")?;
     let mut players: Vec<PresencePlayer> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             Ok(PresencePlayer {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -64,7 +64,7 @@ fn presence_internal(conn: &rusqlite::Connection, today: String) -> Result<Prese
         .map(|(idx, player)| (player.id, idx))
         .collect();
     let mut stmt = conn.prepare("SELECT player, \"when\", schedule FROM presence")?;
-    stmt.query_and_then(NO_PARAMS, |row| {
+    stmt.query_and_then([], |row| {
         let player_id: i32 = row.get(0)?;
         let round_id: i32 = row.get(1)?;
         let schedule: bool = row.get(2)?;

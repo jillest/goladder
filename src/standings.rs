@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use actix_web::Responder;
 use askama::Template;
-use rusqlite::NO_PARAMS;
 
 use gorating::Rating;
 
@@ -31,7 +30,7 @@ pub(crate) fn standings(conn: &rusqlite::Connection) -> Result<impl Responder> {
 fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<StandingsTemplate> {
     let mut stmt = conn.prepare("SELECT id FROM players ORDER BY initialrating DESC, id")?;
     let original_indices: HashMap<i32, usize> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let id: i32 = row.get(0)?;
             Ok(id)
         })?
@@ -49,7 +48,7 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
             "GROUP BY p.id ORDER BY p.currentrating DESC, p.id"),
         )?;
     let mut players: Vec<StandingsPlayer> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let id: i32 = row.get(0)?;
             let name: String = row.get(1)?;
             let default_schedule: bool = row.get(2)?;
@@ -86,7 +85,7 @@ fn standings_internal(conn: &rusqlite::Connection, today: String) -> Result<Stan
             "WHERE g.played = r.id AND g.result IS NOT NULL ",
             "ORDER BY r.date, g.id"
         ))?;
-        stmt.query_map(NO_PARAMS, |row| {
+        stmt.query_map([], |row| {
             let round_id: i32 = row.get(0)?;
             let round_date: String = row.get(1)?;
             let round_extra: RoundExtra = row.get(2)?;
@@ -194,7 +193,7 @@ mod tests {
                         "(41, \"player1\", 1000.0, 1020.0), ",
                         "(42, \"player2\", 1000.0, 980.0);"
                     ),
-                    NO_PARAMS,
+                    [],
                 )
                 .unwrap();
             trans
@@ -203,7 +202,7 @@ mod tests {
                         "INSERT INTO rounds (id, \"date\") VALUES ",
                         "(99, '2019-06-17');",
                     ),
-                    NO_PARAMS,
+                    [],
                 )
                 .unwrap();
             trans
@@ -212,7 +211,7 @@ mod tests {
                         "INSERT INTO games (id, played, white, black, result) VALUES ",
                         "(33, 99, 41, 42, 'WhiteWins');"
                     ),
-                    NO_PARAMS,
+                    [],
                 )
                 .unwrap();
             trans.commit().unwrap();

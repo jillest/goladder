@@ -1,6 +1,6 @@
 use actix_web::{http, HttpResponse};
 use askama::Template;
-use rusqlite::{params, NO_PARAMS};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::{CommonTemplate, Result};
@@ -41,7 +41,7 @@ fn export_internal(conn: &rusqlite::Connection) -> Result<String> {
         "ORDER BY currentrating DESC, id"
     ))?;
     let players: Vec<Player> = stmt
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             Ok(Player {
                 name: row.get(0)?,
                 rating: row.get(1)?,
@@ -140,7 +140,7 @@ mod tests {
                         "(41, \"player1\", 1000.0, 1020.0), ",
                         "(42, \"player2\", 1000.0, 980.0);"
                     ),
-                    NO_PARAMS,
+                    [],
                 )
                 .unwrap();
             trans.commit().unwrap();
@@ -203,7 +203,7 @@ mod tests {
                             "(41, \"player1\", 1000.0, 1020.0), ",
                             "(42, \"player2\", 1000.0, 980.0);"
                         ),
-                        NO_PARAMS,
+                        [],
                     )
                     .unwrap();
                 trans.commit().unwrap();
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(cr, 980.0);
         assert_eq!(ds, false);
         let np: i64 = conn
-            .query_row("SELECT COUNT(*) FROM players", NO_PARAMS, |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
             .unwrap();
         assert_eq!(np, 2);
     }
