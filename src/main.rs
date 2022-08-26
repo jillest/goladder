@@ -365,7 +365,7 @@ fn modify_games(
     for &(id, action) in game_actions {
         let result: Option<&str> = match action {
             "delete" => {
-                if d_stmt.execute(&[round_id, id])? > 0 {
+                if d_stmt.execute([round_id, id])? > 0 {
                     *ratings_changed = true;
                 }
                 continue;
@@ -556,7 +556,7 @@ fn add_custom_game(
                 trans.prepare("SELECT id, currentrating FROM players WHERE id = ?1 OR id = ?2")?;
             let mut white_rating = None;
             let mut black_rating = None;
-            stmt.query_map(&[game.white, game.black], |row| {
+            stmt.query_map([game.white, game.black], |row| {
                 let id: i32 = row.get(0)?;
                 let rating: f64 = row.get(1)?;
                 if id == game.white {

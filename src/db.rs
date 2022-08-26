@@ -34,12 +34,11 @@ impl FromSql for GameResult {
 
 impl FromSql for RoundExtra {
     fn column_result(val: ValueRef) -> Result<Self, FromSqlError> {
-        match val {
-            ValueRef::Null => Ok(Default::default()),
-            ValueRef::Text(s) => {
+        match val.as_str_or_null()? {
+            None => Ok(Default::default()),
+            Some(s) => {
                 serde_json::from_str(s).map_err(|e| FromSqlError::Other(Box::new(e)))
             }
-            _ => Err(FromSqlError::InvalidType),
         }
     }
 }
@@ -63,14 +62,14 @@ mod tests {
 
     #[test]
     fn game_result_from_sql_ok() {
-        let val = ValueRef::Text("BlackWins");
+        let val = ValueRef::Text(b"BlackWins");
         let gr: GameResult = FromSql::column_result(val).unwrap();
         assert_eq!(gr, GameResult::BlackWins);
     }
 
     #[test]
     fn game_result_from_sql_error_1() {
-        let val = ValueRef::Text("wrong");
+        let val = ValueRef::Text(b"wrong");
         let r: Result<GameResult, _> = FromSql::column_result(val);
         assert!(r.is_err());
     }
@@ -91,14 +90,14 @@ mod tests {
 
     #[test]
     fn round_extra_from_sql_empty() {
-        let val = ValueRef::Text("{}");
+        let val = ValueRef::Text(b"{}");
         let re: RoundExtra = FromSql::column_result(val).unwrap();
         assert_eq!(re.unknown_fields.len(), 0);
     }
 
     #[test]
     fn round_extra_from_sql_unknown_field() {
-        let val = ValueRef::Text("{\"unknown_field_for_test\": 8}");
+        let val = ValueRef::Text(b"{\"unknown_field_for_test\": 8}");
         let re: RoundExtra = FromSql::column_result(val).unwrap();
         let expected_fields: HashMap<_, _> =
             iter::once(("unknown_field_for_test".to_owned(), json!(8))).collect();
@@ -111,10 +110,10 @@ mod tests {
         let out = re.to_sql().unwrap();
         let s = match out {
             ToSqlOutput::Borrowed(ValueRef::Text(s)) => s,
-            ToSqlOutput::Owned(Value::Text(ref s)) => s,
+            ToSqlOutput::Owned(Value::Text(ref s)) => s.as_bytes(),
             _ => panic!("incorrect type for RoundExtra SQL result in {:?}", out),
         };
-        assert_eq!(&s[0..1], "{");
+        assert_eq!(&s[0..1], b"{");
     }
 
     #[test]
