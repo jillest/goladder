@@ -60,6 +60,10 @@ window.addEventListener('load', function() {
 <body>
 <h1><span class="screenOnly">Scheduling round</span><span class="printOnly">Scheduled games</span> on {{round.date}}</h1>
 <form id="pairform" action="/schedule/{{round.id}}" method="POST">
+<div class="screenOnly">
+<input type="submit" value="Apply changes">
+<a href="..">Cancel</a>
+</div> <!-- class="screenOnly" -->
 <h2 class="screenOnly">Scheduled games</h2>
 {% if games.len() != 0 %}
 <table class="zebra">
