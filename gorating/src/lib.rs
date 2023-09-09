@@ -523,6 +523,25 @@ mod test {
     }
 
     #[test]
+    fn test_calculate_handicap() {
+        let sys = RatingSystem::new();
+        assert_eq!(sys.calculate_handicap(0.0).to_string(), "0w6½");
+        assert_eq!(sys.calculate_handicap(49.0).to_string(), "0w6½");
+        assert_eq!(sys.calculate_handicap(51.0).to_string(), "0b0");
+        assert_eq!(sys.calculate_handicap(74.0).to_string(), "0b0");
+        assert_eq!(sys.calculate_handicap(76.0).to_string(), "0b5");
+        assert_eq!(sys.calculate_handicap(124.0).to_string(), "0b5");
+        assert_eq!(sys.calculate_handicap(126.0).to_string(), "2b0");
+        assert_eq!(sys.calculate_handicap(174.0).to_string(), "2b0");
+        assert_eq!(sys.calculate_handicap(176.0).to_string(), "2b5");
+        assert_eq!(sys.calculate_handicap(224.0).to_string(), "2b5");
+        assert_eq!(sys.calculate_handicap(226.0).to_string(), "3b0");
+        assert_eq!(sys.calculate_handicap(274.0).to_string(), "3b0");
+        assert_eq!(sys.calculate_handicap(276.0).to_string(), "3b5");
+        assert_eq!(sys.calculate_handicap(324.0).to_string(), "3b5");
+    }
+
+    #[test]
     fn test_rank_kyu() {
         assert_eq!(Rank(51.0).to_string(), "20k");
         assert_eq!(Rank(100.0).to_string(), "20k");
