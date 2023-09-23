@@ -735,6 +735,7 @@ struct EditPlayerTemplate {
     is_new: bool,
     player: Player,
     presence: PlayerPresence,
+    min_rating: f64,
 }
 impl CommonTemplate for EditPlayerTemplate {}
 
@@ -750,6 +751,7 @@ async fn add_player(_state: Data<AppState>) -> impl Responder {
             default: true,
             rounds: vec![],
         },
+        min_rating: update_ratings::RATINGS.min_rating.0,
     }
 }
 
@@ -860,6 +862,7 @@ async fn edit_player((params, state): (Path<(i32,)>, Data<AppState>)) -> Result<
         is_new: false,
         player,
         presence,
+        min_rating: update_ratings::RATINGS.min_rating.0,
     })
 }
 
