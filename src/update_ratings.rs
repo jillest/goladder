@@ -33,9 +33,7 @@ fn apply_pending_changes(ratings: &mut HashMap<i32, PendingRating>) {
 pub fn update_ratings(trans: &Transaction) -> rusqlite::Result<()> {
     let mut stmt = trans.prepare("SELECT id, initialrating FROM players")?;
     let mut ratings: HashMap<i32, PendingRating> = stmt
-        .query_map([], |row| {
-            Ok((row.get(0)?, PendingRating::new(row.get(1)?)))
-        })?
+        .query_map([], |row| Ok((row.get(0)?, PendingRating::new(row.get(1)?))))?
         .collect::<rusqlite::Result<_>>()?;
     let mut last_round = None;
     let mut stmt = trans.prepare(

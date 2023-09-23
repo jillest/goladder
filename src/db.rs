@@ -36,9 +36,7 @@ impl FromSql for RoundExtra {
     fn column_result(val: ValueRef) -> Result<Self, FromSqlError> {
         match val.as_str_or_null()? {
             None => Ok(Default::default()),
-            Some(s) => {
-                serde_json::from_str(s).map_err(|e| FromSqlError::Other(Box::new(e)))
-            }
+            Some(s) => serde_json::from_str(s).map_err(|e| FromSqlError::Other(Box::new(e))),
         }
     }
 }
